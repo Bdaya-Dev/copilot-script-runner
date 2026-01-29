@@ -1,10 +1,10 @@
-# Script Runner for VS Code
+# Copilot Script Runner for VS Code
 
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/bdayadev.vscode-script-runner?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=bdayadev.vscode-script-runner)
-[![Open VSX](https://img.shields.io/open-vsx/v/bdayadev/vscode-script-runner?label=Open%20VSX)](https://open-vsx.org/extension/bdayadev/vscode-script-runner)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/bdayadev.copilot-script-runner?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=bdayadev.copilot-script-runner)
+[![Open VSX](https://img.shields.io/open-vsx/v/bdayadev/copilot-script-runner?label=Open%20VSX)](https://open-vsx.org/extension/bdayadev/copilot-script-runner)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-AI-powered Language Model tools for running multi-line PowerShell and Bash scripts in VS Code. This extension solves the common issue where AI agents fail when using `run_in_terminal` with multi-line commands.
+AI-powered Language Model tools for running multi-line PowerShell and Bash scripts in VS Code with GitHub Copilot. This extension solves the common issue where AI agents fail when using `run_in_terminal` with multi-line commands.
 
 ## Features
 

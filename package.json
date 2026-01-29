@@ -1,7 +1,7 @@
 {
-  "name": "vscode-script-runner",
-  "displayName": "Script Runner",
-  "description": "AI-powered tool for running multi-line PowerShell and Bash scripts. Solves the multi-line command issue with run_in_terminal by writing scripts to temp files before execution.",
+  "name": "copilot-script-runner",
+  "displayName": "Copilot Script Runner",
+  "description": "AI-powered tool for running multi-line PowerShell and Bash scripts with GitHub Copilot. Solves the multi-line command issue with run_in_terminal by writing scripts to temp files before execution.",
   "version": "1.0.1",
   "publisher": "bdayadev",
   "author": {
@@ -16,12 +16,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bdaya-dev/vscode-script-runner.git"
+    "url": "https://github.com/bdaya-dev/copilot-script-runner.git"
   },
   "bugs": {
-    "url": "https://github.com/bdaya-dev/vscode-script-runner/issues"
+    "url": "https://github.com/bdaya-dev/copilot-script-runner/issues"
   },
-  "homepage": "https://github.com/bdaya-dev/vscode-script-runner#readme",
+  "homepage": "https://github.com/bdaya-dev/copilot-script-runner#readme",
   "engines": {
     "vscode": "^1.100.0"
   },
