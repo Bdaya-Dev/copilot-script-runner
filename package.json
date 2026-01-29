@@ -2,7 +2,7 @@
   "name": "copilot-script-runner",
   "displayName": "Copilot Script Runner",
   "description": "AI-powered tool for running multi-line PowerShell and Bash scripts with GitHub Copilot. Solves the multi-line command issue with run_in_terminal by writing scripts to temp files before execution.",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "publisher": "bdayadev",
   "author": {
     "name": "Bdaya Dev",

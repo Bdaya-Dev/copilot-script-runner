@@ -1,3 +1,10 @@
+# [2.2.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.1.0...v2.2.0) (2026-01-29)
+
+
+### Features
+
+* enhance shell detection and command execution for multiple shell types ([67aeb22](https://github.com/bdaya-dev/copilot-script-runner/commit/67aeb22b57e2e744d1ad17575570ee12f74a78fb))
+
 # [2.1.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.0.2...v2.1.0) (2026-01-29)
 
 
