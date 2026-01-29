@@ -1,3 +1,10 @@
+# [2.3.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.2.0...v2.3.0) (2026-01-29)
+
+
+### Features
+
+* enhance README and add new tools for version info and script output retrieval ([4c9b903](https://github.com/bdaya-dev/copilot-script-runner/commit/4c9b903e11ab2e1dfe55e336e1680ded8c6cdfae))
+
 # [2.2.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.1.0...v2.2.0) (2026-01-29)
 
 
