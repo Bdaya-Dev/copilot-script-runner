@@ -288,4 +288,23 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
+## Related Issues
+
+This extension addresses problems documented in these VS Code GitHub issues:
+
+| Issue | Title | Reactions |
+| ----- | ----- | --------- |
+| [#253265](https://github.com/microsoft/vscode/issues/253265) | Agent/Chat extension cannot see terminal command output | 👍 19 |
+| [#282904](https://github.com/microsoft/vscode/issues/282904) | Copilot misses last lines of output (Git Bash + WSL) | — |
+| [#259328](https://github.com/microsoft/vscode/issues/259328) | run_in_terminal fails to capture output (Windows) | 👍 1 |
+| [#261691](https://github.com/microsoft/vscode/issues/261691) | run_in_terminal fails to capture stdout from CLI tools | — |
+| [#261585](https://github.com/microsoft/vscode/issues/261585) | GitHub Copilot Chat Not Capturing Terminal Output | 👍 2 |
+| [#252524](https://github.com/microsoft/vscode/issues/252524) | Copilot agent can't see run_in_terminal output (WSL) | — |
+| [#269724](https://github.com/microsoft/vscode/issues/269724) | Terminal output capture drops last line (Cygwin) | 👍 1 |
+| [#273753](https://github.com/microsoft/vscode/issues/273753) | Terminal stuck after pager (less) | — |
+
+If you're experiencing any of these issues, **Copilot Script Runner** provides a reliable workaround by writing scripts to temp files and using VS Code's shell integration for proper output capture.
+
+---
+
 Made with ❤️ by [Bdaya Dev](https://github.com/Bdaya-Dev)
