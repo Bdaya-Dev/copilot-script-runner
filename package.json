@@ -98,7 +98,7 @@
         ],
         "toolReferenceName": "runBashScript",
         "displayName": "Run Bash Script",
-        "modelDescription": "Runs a Bash script by writing it to a temp file and executing it via WSL or Git Bash. This is ideal for multi-line bash commands on Windows. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Supports background mode for long-running processes - set isBackground=true to return immediately with a terminal ID. Note: Prefer 'run_script' (PowerShell) over this tool unless Bash is specifically required.",
+        "modelDescription": "Runs a Bash script by writing it to a temp file and executing it. Supports native bash (Linux/macOS/Remote SSH), WSL, or Git Bash on Windows. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Supports background mode for long-running processes - set isBackground=true to return immediately with a terminal ID. Use shell='native' for Linux remotes or when running on Linux/macOS directly.",
         "canBeReferencedInPrompt": true,
         "icon": "$(terminal-bash)",
         "inputSchema": {
@@ -115,11 +115,12 @@
             "shell": {
               "type": "string",
               "enum": [
+                "native",
                 "wsl",
                 "gitbash"
               ],
-              "description": "Which shell to use. 'wsl' for Windows Subsystem for Linux, 'gitbash' for Git Bash.",
-              "default": "wsl"
+              "description": "Which shell to use. 'native' for direct bash execution (Linux/macOS/Remote SSH), 'wsl' for Windows Subsystem for Linux, 'gitbash' for Git Bash on Windows.",
+              "default": "native"
             },
             "timeoutMs": {
               "type": "number",
@@ -140,12 +141,56 @@
             "script"
           ]
         }
+      },
+      {
+        "name": "script-runner_get_version",
+        "tags": [
+          "version",
+          "info",
+          "script-runner"
+        ],
+        "toolReferenceName": "scriptRunnerVersion",
+        "displayName": "Get Script Runner Version",
+        "modelDescription": "Returns the currently loaded version of the Copilot Script Runner extension. Useful for debugging and verifying the correct version is installed.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(info)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "script-runner_get_output",
+        "tags": [
+          "terminal",
+          "output",
+          "script-runner"
+        ],
+        "toolReferenceName": "getScriptOutput",
+        "displayName": "Get Script Output",
+        "modelDescription": "Retrieves the output from a Script Runner terminal by its ID. Use this to check the output of background processes or previously executed scripts. The terminal ID is returned by runScript and runBashScript tools.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(output)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "The terminal ID returned by runScript or runBashScript."
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
       }
     ]
   },
   "scripts": {
+    "generate-version": "node scripts/generate-version.js",
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "compile": "npm run generate-version && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "package": "vsce package",

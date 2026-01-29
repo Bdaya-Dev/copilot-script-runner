@@ -79,6 +79,16 @@ const activeTerminals = new Map<string, vscode.Terminal>();
 // Track which terminals are currently busy executing a command
 const busyTerminals = new Set<string>();
 
+// Store the last execution for each terminal (for getScriptOutput)
+const lastExecutions = new Map<string, vscode.TerminalShellExecution>();
+
+/**
+ * Get the last execution for a terminal by ID
+ */
+export function getLastExecution(terminalId: string): vscode.TerminalShellExecution | undefined {
+    return lastExecutions.get(terminalId);
+}
+
 /**
  * Find an existing idle Script Runner terminal or return undefined
  */
@@ -216,10 +226,13 @@ export async function executeInTerminal(
 
     const execution = terminal.shellIntegration!.executeCommand(command);
     
+    // Store the execution for later retrieval via getScriptOutput
+    lastExecutions.set(terminalId, execution);
+    
     // For background processes, return immediately
     if (isBackground) {
         return {
-            stdout: `Background process started in terminal ${terminalId}. Use get_terminal_output with this ID to check output later.`,
+            stdout: `Background process started in terminal ${terminalId}. Use #getScriptOutput with this ID to check output later.`,
             stderr: '',
             exitCode: 0,
             terminalId,
@@ -432,6 +445,20 @@ export async function executeGitBashScript(
 }
 
 /**
+ * Execute a Bash script file directly (native Linux/macOS).
+ * 
+ * Use this on Linux/macOS remotes or when running in a native bash environment.
+ */
+export async function executeBashScript(
+    scriptPath: string,
+    _workingDirectory?: string,
+    timeoutMs?: number,
+    isBackground: boolean = false
+): Promise<ScriptResult> {
+    return executeScript(scriptPath, ShellType.Bash, timeoutMs, isBackground);
+}
+
+/**
  * Write script content to a file
  */
 export async function writeScriptFile(path: string, content: string): Promise<void> {
@@ -458,7 +485,7 @@ export function formatOutput(result: ScriptResult, keepScript: boolean, scriptPa
     if (result.isBackground) {
         output.push(`Background process started.`);
         output.push(`Terminal ID: ${result.terminalId}`);
-        output.push(`Use get_terminal_output to check output later.`);
+        output.push(`Use #getScriptOutput with this ID to check output later.`);
         return output.join('\n');
     }
     

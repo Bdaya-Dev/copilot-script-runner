@@ -4,6 +4,7 @@ import {
     generateScriptPath,
     executeWslScript,
     executeGitBashScript,
+    executeBashScript,
     writeScriptFile,
     cleanupScriptFile,
     formatOutput
@@ -12,7 +13,7 @@ import {
 interface IRunBashScriptParameters {
     script: string;
     workingDirectory?: string;
-    shell?: 'wsl' | 'gitbash';
+    shell?: 'wsl' | 'gitbash' | 'native';
     timeoutMs?: number;
     keepScript?: boolean;
     isBackground?: boolean;
@@ -26,7 +27,7 @@ export class RunBashScriptTool implements vscode.LanguageModelTool<IRunBashScrip
         const { 
             script, 
             workingDirectory, 
-            shell = 'wsl', 
+            shell = 'native', 
             timeoutMs,
             keepScript = false,
             isBackground = false
@@ -44,9 +45,19 @@ export class RunBashScriptTool implements vscode.LanguageModelTool<IRunBashScrip
 
             await writeScriptFile(scriptPath, bashScript);
 
-            const result = shell === 'wsl'
-                ? await executeWslScript(scriptPath, workingDirectory, timeoutMs, isBackground)
-                : await executeGitBashScript(scriptPath, workingDirectory, timeoutMs, isBackground);
+            let result;
+            switch (shell) {
+                case 'wsl':
+                    result = await executeWslScript(scriptPath, workingDirectory, timeoutMs, isBackground);
+                    break;
+                case 'gitbash':
+                    result = await executeGitBashScript(scriptPath, workingDirectory, timeoutMs, isBackground);
+                    break;
+                case 'native':
+                default:
+                    result = await executeBashScript(scriptPath, workingDirectory, timeoutMs, isBackground);
+                    break;
+            }
 
             // For background processes, don't clean up immediately
             if (!keepScript && !isBackground) {
