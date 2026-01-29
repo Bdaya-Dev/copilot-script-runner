@@ -9,7 +9,7 @@
     }],
     ["@semantic-release/exec", {
       "prepareCmd": "npx @vscode/vsce package",
-      "publishCmd": "npx @vscode/vsce publish -p ${VSCE_PAT}"
+      "publishCmd": "npx @vscode/vsce publish -p $VSCE_PAT"
     }],
     ["@semantic-release/git", {
       "assets": ["package.json", "package-lock.json", "CHANGELOG.md"],
