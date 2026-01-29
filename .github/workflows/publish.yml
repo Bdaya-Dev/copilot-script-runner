@@ -36,29 +36,3 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: npx semantic-release
-
-  # Separate job for Open VSX (optional, runs only if OVSX_PAT is set)
-  publish-openvsx:
-    needs: release
-    runs-on: ubuntu-latest
-    if: ${{ vars.ENABLE_OPENVSX == 'true' }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Compile and Package
-        run: |
-          npm run compile
-          npx @vscode/vsce package
-
-      - name: Publish to Open VSX
-        run: npx ovsx publish -p ${{ secrets.OVSX_PAT }} *.vsix
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
