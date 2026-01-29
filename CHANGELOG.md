@@ -1,3 +1,21 @@
+# 1.0.0 (2026-01-29)
+
+
+### Bug Fixes
+
+* add PNG icon for marketplace ([8c14128](https://github.com/bdaya-dev/vscode-script-runner/commit/8c14128c5fe115410d2f1233c6471921598ebc95))
+* update publisher to bdayadev, make OpenVSX optional ([f1a3a48](https://github.com/bdaya-dev/vscode-script-runner/commit/f1a3a486cc1f4a7cc9dad55a48ae4f7385db1c78))
+
+
+### Features
+
+* initial release with semantic-release ([014056d](https://github.com/bdaya-dev/vscode-script-runner/commit/014056d1cb05e145f2b6842aac66d0a9e0098352)), closes [#runScript](https://github.com/bdaya-dev/vscode-script-runner/issues/runScript) [#runBashScript](https://github.com/bdaya-dev/vscode-script-runner/issues/runBashScript)
+
+
+### BREAKING CHANGES
+
+* Initial release
+
 # Changelog
 
 All notable changes to the "Script Runner" extension will be documented in this file.
