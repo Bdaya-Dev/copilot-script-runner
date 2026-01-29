@@ -1,6 +1,6 @@
 import { writeFile, unlink, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, basename } from 'path';
 import { randomUUID } from 'crypto';
 import * as vscode from 'vscode';
 
@@ -10,6 +10,67 @@ export interface ScriptResult {
     exitCode: number;
     terminalId?: string;
     isBackground?: boolean;
+}
+
+/**
+ * Shell types that we can detect and handle.
+ * Based on VS Code's TerminalShellType from terminal.ts
+ */
+export enum ShellType {
+    PowerShell = 'pwsh',
+    Bash = 'bash',
+    Zsh = 'zsh',
+    Fish = 'fish',
+    Cmd = 'cmd',
+    Wsl = 'wsl',
+    GitBash = 'gitbash',
+    Unknown = 'unknown'
+}
+
+/**
+ * Detect shell type from an executable path.
+ * Based on VS Code's shell detection in windowsShellHelper.ts and runInTerminalHelpers.ts
+ */
+export function detectShellType(shellPath: string): ShellType {
+    const executable = basename(shellPath).toLowerCase().replace(/\.exe$/i, '');
+    
+    // PowerShell variants
+    if (/^(?:powershell|pwsh)(?:-preview)?$/.test(executable)) {
+        return ShellType.PowerShell;
+    }
+    
+    // Bash (including Git Bash which uses bash.exe)
+    if (executable === 'bash') {
+        // Check if it's Git Bash by path
+        if (shellPath.toLowerCase().includes('\\git\\')) {
+            return ShellType.GitBash;
+        }
+        return ShellType.Bash;
+    }
+    
+    // WSL
+    if (executable === 'wsl' || executable === 'ubuntu' || executable === 'debian' || 
+        executable === 'kali' || executable === 'opensuse-42' || executable === 'sles-12') {
+        return ShellType.Wsl;
+    }
+    
+    // Other shells
+    if (executable === 'zsh') return ShellType.Zsh;
+    if (executable === 'fish') return ShellType.Fish;
+    if (executable === 'cmd') return ShellType.Cmd;
+    
+    return ShellType.Unknown;
+}
+
+/**
+ * Get the current shell type from VS Code's default shell setting
+ */
+export function getDefaultShellType(): ShellType {
+    const shell = vscode.env.shell;
+    if (!shell) {
+        return process.platform === 'win32' ? ShellType.PowerShell : ShellType.Bash;
+    }
+    return detectShellType(shell);
 }
 
 // Store active terminals for background process tracking
@@ -153,9 +214,6 @@ export async function executeInTerminal(
         };
     }
 
-    // DEBUG: Log the command being executed
-    console.log('[Script Runner] Executing command:', command);
-
     const execution = terminal.shellIntegration!.executeCommand(command);
     
     // For background processes, return immediately
@@ -217,6 +275,110 @@ export async function executeInTerminal(
 }
 
 /**
+ * Build the command to execute a script based on the shell type.
+ * 
+ * This handles the differences between shells:
+ * - PowerShell: Uses *>&1 to merge streams and Out-String for text output
+ * - Bash/Zsh: Uses 2>&1 to merge stderr into stdout
+ * - Fish: Uses 2>&1 redirection
+ * - CMD: Uses 2>&1 redirection
+ * 
+ * @param scriptPath - Path to the script file
+ * @param shellType - The shell type to format the command for
+ * @param executingFromShell - The shell that will run this command (for nested execution like Git Bash from PowerShell)
+ */
+export function buildScriptCommand(scriptPath: string, shellType: ShellType, executingFromShell?: ShellType): string {
+    switch (shellType) {
+        case ShellType.PowerShell:
+            // *>&1 merges all PowerShell streams into stdout, Out-String converts objects to text
+            return `pwsh -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" *>&1 | Out-String -Width 4096`;
+        
+        case ShellType.Bash:
+        case ShellType.Zsh:
+            // Simple bash execution with stderr redirect
+            return `bash "${scriptPath}" 2>&1`;
+        
+        case ShellType.Fish:
+            return `fish "${scriptPath}" 2>&1`;
+        
+        case ShellType.Wsl:
+            // Convert Windows path to WSL path and execute inside WSL
+            const wslPath = scriptPath
+                .replace(/\\/g, '/')
+                .replace(/^([A-Z]):/, (_, letter: string) => `/mnt/${letter.toLowerCase()}`);
+            // Run inside WSL's bash context
+            return `wsl bash -c 'bash "${wslPath}" 2>&1'`;
+        
+        case ShellType.GitBash:
+            // Convert backslashes to forward slashes for Git Bash
+            const gitBashPath = scriptPath.replace(/\\/g, '/');
+            // If executing from PowerShell, we need the & operator and full path
+            if (executingFromShell === ShellType.PowerShell) {
+                return `& "$env:ProgramFiles\\Git\\bin\\bash.exe" -c 'bash "${gitBashPath}" 2>&1'`;
+            }
+            // If already in Git Bash context
+            return `bash "${gitBashPath}" 2>&1`;
+        
+        case ShellType.Cmd:
+            return `cmd /c "${scriptPath}" 2>&1`;
+        
+        default:
+            // Fallback: try bash-style execution
+            return `bash "${scriptPath}" 2>&1`;
+    }
+}
+
+/**
+ * Get the appropriate script file extension for a shell type
+ */
+export function getScriptExtension(shellType: ShellType): string {
+    switch (shellType) {
+        case ShellType.PowerShell:
+            return '.ps1';
+        case ShellType.Cmd:
+            return '.cmd';
+        case ShellType.Fish:
+            return '.fish';
+        case ShellType.Bash:
+        case ShellType.Zsh:
+        case ShellType.Wsl:
+        case ShellType.GitBash:
+        default:
+            return '.sh';
+    }
+}
+
+/**
+ * Execute a script in VS Code's terminal using the appropriate shell.
+ * 
+ * This is the main entry point for script execution. It:
+ * 1. Detects the current shell type from VS Code's default shell
+ * 2. Builds the appropriate command for that shell
+ * 3. Executes the command via shell integration
+ * 
+ * @param scriptPath - Path to the script file
+ * @param shellType - The shell type to use (defaults to auto-detected)
+ * @param timeoutMs - Optional timeout in milliseconds
+ * @param isBackground - Whether to run in background mode
+ */
+export async function executeScript(
+    scriptPath: string,
+    shellType?: ShellType,
+    timeoutMs?: number,
+    isBackground: boolean = false
+): Promise<ScriptResult> {
+    const effectiveShellType = shellType ?? getDefaultShellType();
+    const terminalName = `Script Runner (${effectiveShellType})`;
+    
+    // Build the command for this shell type
+    // When running in VS Code terminal, the "executing from" shell is the VS Code default shell
+    const executingFromShell = getDefaultShellType();
+    const command = buildScriptCommand(scriptPath, effectiveShellType, executingFromShell);
+    
+    return executeInTerminal(command, terminalName, isBackground, timeoutMs);
+}
+
+/**
  * Execute a PowerShell script file in VS Code terminal.
  * 
  * Uses *>&1 to merge all PowerShell streams (Error, Warning, Verbose, Debug, Info)
@@ -231,18 +393,15 @@ export async function executePowerShellScript(
     timeoutMs?: number,
     isBackground: boolean = false
 ): Promise<ScriptResult> {
-    // *>&1 merges all streams (stdout=1, stderr=2, warning=3, verbose=4, debug=5, info=6) into stdout
-    // Out-String converts objects to string representation with specified width
-    const command = `pwsh -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" *>&1 | Out-String -Width 4096`;
-    return executeInTerminal(command, 'Script Runner (PowerShell)', isBackground, timeoutMs);
+    return executeScript(scriptPath, ShellType.PowerShell, timeoutMs, isBackground);
 }
 
 /**
  * Execute a Bash script file via WSL in VS Code terminal.
  * 
- * Uses 2>&1 to redirect stderr to stdout, then pipes through cat to:
- * 1. Prevent any pager (less, more) from activating
- * 2. Ensure output flows continuously without alternate buffer
+ * The redirection must happen INSIDE WSL, not in PowerShell, because:
+ * - PowerShell interprets `| cat` as its own Get-Content alias
+ * - We use wsl bash -c '...' to run the entire command in bash context
  * 
  * @see https://www.gnu.org/software/bash/manual/html_node/Redirections.html
  */
@@ -252,21 +411,13 @@ export async function executeWslScript(
     timeoutMs?: number,
     isBackground: boolean = false
 ): Promise<ScriptResult> {
-    // Convert Windows path to WSL path
-    const wslPath = scriptPath
-        .replace(/\\/g, '/')
-        .replace(/^([A-Z]):/, (_, letter) => `/mnt/${letter.toLowerCase()}`);
-    
-    // 2>&1 redirects stderr(2) to stdout(1), then pipe through cat to prevent pagers
-    const command = `wsl bash "${wslPath}" 2>&1 | cat`;
-    return executeInTerminal(command, 'Script Runner (WSL)', isBackground, timeoutMs);
+    return executeScript(scriptPath, ShellType.Wsl, timeoutMs, isBackground);
 }
 
 /**
  * Execute a Bash script file via Git Bash in VS Code terminal.
  * 
- * Since we're executing from a PowerShell terminal, we use & to invoke Git Bash.
- * The script is wrapped with bash -c to handle stderr redirection and cat piping
+ * The script is wrapped to handle stderr redirection and execute
  * within the bash context (not PowerShell's redirection).
  * 
  * @see https://www.gnu.org/software/bash/manual/html_node/Redirections.html
@@ -277,13 +428,7 @@ export async function executeGitBashScript(
     timeoutMs?: number,
     isBackground: boolean = false
 ): Promise<ScriptResult> {
-    // Convert backslashes to forward slashes for Git Bash
-    const bashPath = scriptPath.replace(/\\/g, '/');
-    
-    // Use bash -c to run the script with proper stderr redirection inside bash
-    // The entire command runs in bash context where 2>&1 | cat works correctly
-    const command = `& "C:\\Program Files\\Git\\bin\\bash.exe" -c 'bash "${bashPath}" 2>&1 | cat'`;
-    return executeInTerminal(command, 'Script Runner (Git Bash)', isBackground, timeoutMs);
+    return executeScript(scriptPath, ShellType.GitBash, timeoutMs, isBackground);
 }
 
 /**
