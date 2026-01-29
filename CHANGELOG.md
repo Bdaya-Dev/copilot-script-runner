@@ -1,3 +1,15 @@
+# [2.0.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v1.0.1...v2.0.0) (2026-01-29)
+
+
+### Features
+
+* trigger release with new unique name ([5cddc5d](https://github.com/bdaya-dev/copilot-script-runner/commit/5cddc5d30a8ed57cbbafb020bcb8b137b4a38d88))
+
+
+### BREAKING CHANGES
+
+* Extension renamed from vscode-script-runner to copilot-script-runner for marketplace uniqueness
+
 ## [1.0.1](https://github.com/bdaya-dev/vscode-script-runner/compare/v1.0.0...v1.0.1) (2026-01-29)
 
 
