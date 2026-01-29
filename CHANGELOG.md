@@ -1,3 +1,10 @@
+## [2.0.2](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.0.1...v2.0.2) (2026-01-29)
+
+
+### Bug Fixes
+
+* enable publishing to both VS Code Marketplace and OpenVSX ([f7efe38](https://github.com/bdaya-dev/copilot-script-runner/commit/f7efe38ef63324120b8465739bfe4fd64f299545))
+
 ## [2.0.1](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.0.0...v2.0.1) (2026-01-29)
 
 
