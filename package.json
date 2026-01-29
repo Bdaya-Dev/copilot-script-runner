@@ -1,0 +1,155 @@
+{
+  "name": "vscode-script-runner",
+  "displayName": "Script Runner",
+  "description": "AI-powered tool for running multi-line PowerShell and Bash scripts. Solves the multi-line command issue with run_in_terminal by writing scripts to temp files before execution.",
+  "version": "1.0.0",
+  "publisher": "bdaya-dev",
+  "author": {
+    "name": "Bdaya Dev",
+    "url": "https://github.com/bdaya-dev"
+  },
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bdaya-dev/vscode-script-runner"
+  },
+  "bugs": {
+    "url": "https://github.com/bdaya-dev/vscode-script-runner/issues"
+  },
+  "homepage": "https://github.com/bdaya-dev/vscode-script-runner#readme",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "copilot",
+    "ai",
+    "terminal",
+    "powershell",
+    "bash",
+    "script",
+    "automation",
+    "devops"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languageModelTools": [
+      {
+        "name": "script-runner_run_script",
+        "tags": [
+          "terminal",
+          "powershell",
+          "script",
+          "script-runner"
+        ],
+        "toolReferenceName": "runScript",
+        "displayName": "Run PowerShell Script",
+        "modelDescription": "Runs a PowerShell script by writing it to a temp file and executing it. This is ideal for multi-line commands that would fail with direct terminal execution. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Note: PowerShell is the RECOMMENDED choice for Windows environments.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(terminal-powershell)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "script": {
+              "type": "string",
+              "description": "The PowerShell script content to execute. Can be multi-line."
+            },
+            "workingDirectory": {
+              "type": "string",
+              "description": "The working directory to run the script in. Defaults to current directory."
+            },
+            "timeoutMs": {
+              "type": "number",
+              "description": "Timeout in milliseconds. Defaults to 120000 (2 minutes).",
+              "default": 120000
+            },
+            "keepScript": {
+              "type": "boolean",
+              "description": "If true, keeps the temp script file after execution for debugging.",
+              "default": false
+            }
+          },
+          "required": [
+            "script"
+          ]
+        }
+      },
+      {
+        "name": "script-runner_run_bash_script",
+        "tags": [
+          "terminal",
+          "bash",
+          "wsl",
+          "script",
+          "script-runner"
+        ],
+        "toolReferenceName": "runBashScript",
+        "displayName": "Run Bash Script",
+        "modelDescription": "Runs a Bash script by writing it to a temp file and executing it via WSL or Git Bash. This is ideal for multi-line bash commands on Windows. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Note: Prefer 'run_script' (PowerShell) over this tool unless Bash is specifically required.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(terminal-bash)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "script": {
+              "type": "string",
+              "description": "The Bash script content to execute. Can be multi-line."
+            },
+            "workingDirectory": {
+              "type": "string",
+              "description": "The working directory to run the script in. Defaults to current directory."
+            },
+            "shell": {
+              "type": "string",
+              "enum": [
+                "wsl",
+                "gitbash"
+              ],
+              "description": "Which shell to use. 'wsl' for Windows Subsystem for Linux, 'gitbash' for Git Bash.",
+              "default": "wsl"
+            },
+            "timeoutMs": {
+              "type": "number",
+              "description": "Timeout in milliseconds. Defaults to 120000 (2 minutes).",
+              "default": 120000
+            },
+            "keepScript": {
+              "type": "boolean",
+              "description": "If true, keeps the temp script file after execution for debugging.",
+              "default": false
+            }
+          },
+          "required": [
+            "script"
+          ]
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package",
+    "publish": "vsce publish",
+    "publish:ovsx": "ovsx publish"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.100.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0"
+  }
+}

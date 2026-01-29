@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0078d4"/>
+      <stop offset="100%" style="stop-color:#005a9e"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="16" fill="url(#bg)"/>
+  <g fill="#ffffff">
+    <!-- Terminal icon -->
+    <rect x="20" y="30" width="88" height="68" rx="6" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <line x1="20" y1="48" x2="108" y2="48" stroke="#ffffff" stroke-width="4"/>
+    <circle cx="32" cy="39" r="4"/>
+    <circle cx="46" cy="39" r="4"/>
+    <circle cx="60" cy="39" r="4"/>
+    <!-- Command prompt symbol -->
+    <text x="32" y="80" font-family="Consolas, monospace" font-size="28" font-weight="bold" fill="#ffffff">&gt;_</text>
+    <!-- Play arrow -->
+    <polygon points="85,62 85,86 102,74" fill="#4fc3f7"/>
+  </g>
+</svg>
