@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.0.2...v2.1.0) (2026-01-29)
+
+
+### Features
+
+* update Node.js version to 24 and add background execution support for scripts ([9e42e0a](https://github.com/bdaya-dev/copilot-script-runner/commit/9e42e0ab7ba1c82d93e1989c31bce21633cafcf5))
+
 ## [2.0.2](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.0.1...v2.0.2) (2026-01-29)
 
 
