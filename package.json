@@ -2,7 +2,7 @@
   "name": "vscode-script-runner",
   "displayName": "Script Runner",
   "description": "AI-powered tool for running multi-line PowerShell and Bash scripts. Solves the multi-line command issue with run_in_terminal by writing scripts to temp files before execution.",
-  "version": "1.0.0",
+  "version": "0.0.0-development",
   "publisher": "bdaya-dev",
   "author": {
     "name": "Bdaya Dev",
@@ -141,15 +141,19 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "package": "vsce package",
-    "publish": "vsce publish",
-    "publish:ovsx": "ovsx publish"
+    "semantic-release": "semantic-release"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.0",
+    "@semantic-release/exec": "^6.0.0",
+    "@semantic-release/git": "^10.0.0",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.100.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
+    "ovsx": "^0.9.0",
+    "semantic-release": "^24.0.0",
     "typescript": "^5.7.0"
   }
 }
