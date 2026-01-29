@@ -57,9 +57,8 @@ export class RunScriptTool implements vscode.LanguageModelTool<IRunScriptParamet
         options: vscode.LanguageModelToolInvocationPrepareOptions<IRunScriptParameters>,
         _token: vscode.CancellationToken
     ): Promise<vscode.PreparedToolInvocation> {
-        // Get first few lines for display
-        const scriptPreview = options.input.script.split('\n').slice(0, 3).join('\n');
-        const hasMore = options.input.script.split('\n').length > 3;
+        // Display entire script
+        const scriptPreview = options.input.script;
         const bgNote = options.input.isBackground ? '\n\n*Running in background mode*' : '';
 
         return {
@@ -67,9 +66,9 @@ export class RunScriptTool implements vscode.LanguageModelTool<IRunScriptParamet
                 ? 'Starting background PowerShell script...' 
                 : 'Running PowerShell script...',
             confirmationMessages: {
-                title: 'Run PowerShell Script',
+                title: 'Run PowerShell Script',                
                 message: new vscode.MarkdownString(
-                    `Run this PowerShell script?\n\n\`\`\`powershell\n${scriptPreview}${hasMore ? '\n...' : ''}\n\`\`\`${bgNote}\n`
+                    `Run this PowerShell script?\n\n\`\`\`powershell\n${scriptPreview}\n\`\`\`${bgNote}\n`
                 ),
             },
         };
