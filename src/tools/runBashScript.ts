@@ -15,6 +15,7 @@ interface IRunBashScriptParameters {
     shell?: 'wsl' | 'gitbash';
     timeoutMs?: number;
     keepScript?: boolean;
+    isBackground?: boolean;
 }
 
 export class RunBashScriptTool implements vscode.LanguageModelTool<IRunBashScriptParameters> {
@@ -26,8 +27,9 @@ export class RunBashScriptTool implements vscode.LanguageModelTool<IRunBashScrip
             script, 
             workingDirectory, 
             shell = 'wsl', 
-            timeoutMs = 120000, 
-            keepScript = false 
+            timeoutMs,
+            keepScript = false,
+            isBackground = false
         } = options.input;
 
         const tempDir = await getTempDir();
@@ -43,14 +45,15 @@ export class RunBashScriptTool implements vscode.LanguageModelTool<IRunBashScrip
             await writeScriptFile(scriptPath, bashScript);
 
             const result = shell === 'wsl'
-                ? await executeWslScript(scriptPath, workingDirectory, timeoutMs)
-                : await executeGitBashScript(scriptPath, workingDirectory, timeoutMs);
+                ? await executeWslScript(scriptPath, workingDirectory, timeoutMs, isBackground)
+                : await executeGitBashScript(scriptPath, workingDirectory, timeoutMs, isBackground);
 
-            if (!keepScript) {
+            // For background processes, don't clean up immediately
+            if (!keepScript && !isBackground) {
                 await cleanupScriptFile(scriptPath);
             }
 
-            const output = formatOutput(result, keepScript, scriptPath);
+            const output = formatOutput(result, keepScript || isBackground, scriptPath);
 
             return new vscode.LanguageModelToolResult([
                 new vscode.LanguageModelTextPart(output)
@@ -70,13 +73,16 @@ export class RunBashScriptTool implements vscode.LanguageModelTool<IRunBashScrip
         const scriptPreview = options.input.script.split('\n').slice(0, 3).join('\n');
         const hasMore = options.input.script.split('\n').length > 3;
         const shell = options.input.shell || 'wsl';
+        const bgNote = options.input.isBackground ? '\n\n*Running in background mode*' : '';
 
         return {
-            invocationMessage: `Running Bash script via ${shell.toUpperCase()}...`,
+            invocationMessage: options.input.isBackground
+                ? `Starting background Bash script via ${shell.toUpperCase()}...`
+                : `Running Bash script via ${shell.toUpperCase()}...`,
             confirmationMessages: {
                 title: 'Run Bash Script',
                 message: new vscode.MarkdownString(
-                    `Run this Bash script via ${shell.toUpperCase()}?\n\n\`\`\`bash\n${scriptPreview}${hasMore ? '\n...' : ''}\n\`\`\`\n`
+                    `Run this Bash script via ${shell.toUpperCase()}?\n\n\`\`\`bash\n${scriptPreview}${hasMore ? '\n...' : ''}\n\`\`\`${bgNote}\n`
                 ),
             },
         };

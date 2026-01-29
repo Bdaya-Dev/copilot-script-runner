@@ -53,7 +53,7 @@
         ],
         "toolReferenceName": "runScript",
         "displayName": "Run PowerShell Script",
-        "modelDescription": "Runs a PowerShell script by writing it to a temp file and executing it. This is ideal for multi-line commands that would fail with direct terminal execution. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Note: PowerShell is the RECOMMENDED choice for Windows environments.",
+        "modelDescription": "Runs a PowerShell script by writing it to a temp file and executing it. This is ideal for multi-line commands that would fail with direct terminal execution. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Supports background mode for long-running processes (servers, watch tasks) - set isBackground=true to return immediately with a terminal ID. Note: PowerShell is the RECOMMENDED choice for Windows environments.",
         "canBeReferencedInPrompt": true,
         "icon": "$(terminal-powershell)",
         "inputSchema": {
@@ -69,12 +69,16 @@
             },
             "timeoutMs": {
               "type": "number",
-              "description": "Timeout in milliseconds. Defaults to 120000 (2 minutes).",
-              "default": 120000
+              "description": "Timeout in milliseconds."
             },
             "keepScript": {
               "type": "boolean",
               "description": "If true, keeps the temp script file after execution for debugging.",
+              "default": false
+            },
+            "isBackground": {
+              "type": "boolean",
+              "description": "If true, starts the script as a background process and returns immediately with a terminal ID. Use this for long-running processes like servers or watch tasks.",
               "default": false
             }
           },
@@ -94,7 +98,7 @@
         ],
         "toolReferenceName": "runBashScript",
         "displayName": "Run Bash Script",
-        "modelDescription": "Runs a Bash script by writing it to a temp file and executing it via WSL or Git Bash. This is ideal for multi-line bash commands on Windows. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Note: Prefer 'run_script' (PowerShell) over this tool unless Bash is specifically required.",
+        "modelDescription": "Runs a Bash script by writing it to a temp file and executing it via WSL or Git Bash. This is ideal for multi-line bash commands on Windows. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Supports background mode for long-running processes - set isBackground=true to return immediately with a terminal ID. Note: Prefer 'run_script' (PowerShell) over this tool unless Bash is specifically required.",
         "canBeReferencedInPrompt": true,
         "icon": "$(terminal-bash)",
         "inputSchema": {
@@ -119,12 +123,16 @@
             },
             "timeoutMs": {
               "type": "number",
-              "description": "Timeout in milliseconds. Defaults to 120000 (2 minutes).",
-              "default": 120000
+              "description": "Timeout in milliseconds."
             },
             "keepScript": {
               "type": "boolean",
               "description": "If true, keeps the temp script file after execution for debugging.",
+              "default": false
+            },
+            "isBackground": {
+              "type": "boolean",
+              "description": "If true, starts the script as a background process and returns immediately with a terminal ID. Use this for long-running processes like servers or watch tasks.",
               "default": false
             }
           },
