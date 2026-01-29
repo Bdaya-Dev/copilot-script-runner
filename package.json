@@ -3,7 +3,7 @@
   "displayName": "Script Runner",
   "description": "AI-powered tool for running multi-line PowerShell and Bash scripts. Solves the multi-line command issue with run_in_terminal by writing scripts to temp files before execution.",
   "version": "0.0.0-development",
-  "publisher": "bdaya-dev",
+  "publisher": "bdayadev",
   "author": {
     "name": "Bdaya Dev",
     "url": "https://github.com/bdaya-dev"
@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bdaya-dev/vscode-script-runner"
+    "url": "https://github.com/bdaya-dev/vscode-script-runner.git"
   },
   "bugs": {
     "url": "https://github.com/bdaya-dev/vscode-script-runner/issues"

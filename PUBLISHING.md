@@ -47,17 +47,18 @@ BREAKING CHANGE: The old API has been removed.
 ### 1. VS Code Marketplace Publisher
 
 1. Go to https://marketplace.visualstudio.com/manage
-2. Create publisher with ID `bdaya-dev`
-3. Create Personal Access Token at https://dev.azure.com/bdaya-dev/_usersSettings/tokens
+2. Publisher ID: `bdayadev` (already exists)
+3. Create Personal Access Token at https://dev.azure.com/bdayadev/_usersSettings/tokens
    - Organization: `All accessible organizations`
    - Scopes: Marketplace → Manage
 
 ### 2. Open VSX Namespace
 
 1. Go to https://open-vsx.org/
-2. Sign in with GitHub
-3. Create namespace `bdaya-dev`
-4. Generate token at https://open-vsx.org/user-settings/tokens
+2. Sign in with **Eclipse Foundation account** (not GitHub)
+3. Sign the **Publisher Agreement** at https://accounts.eclipse.org/
+4. Create namespace `bdayadev`
+5. Generate token at https://open-vsx.org/user-settings/tokens
 
 ### 3. GitHub Secrets
 
