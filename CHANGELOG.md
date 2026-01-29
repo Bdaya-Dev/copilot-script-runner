@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/bdaya-dev/vscode-script-runner/compare/v1.0.0...v1.0.1) (2026-01-29)
+
+
+### Bug Fixes
+
+* correct env var syntax in releaserc ([b9a3bf3](https://github.com/bdaya-dev/vscode-script-runner/commit/b9a3bf3b7b0e04452a2094eb73e7e729c80c963c))
+
 # 1.0.0 (2026-01-29)
 
 

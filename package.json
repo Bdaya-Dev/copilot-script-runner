@@ -2,7 +2,7 @@
   "name": "vscode-script-runner",
   "displayName": "Script Runner",
   "description": "AI-powered tool for running multi-line PowerShell and Bash scripts. Solves the multi-line command issue with run_in_terminal by writing scripts to temp files before execution.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "bdayadev",
   "author": {
     "name": "Bdaya Dev",
