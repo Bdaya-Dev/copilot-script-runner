@@ -48,79 +48,39 @@
         "tags": [
           "terminal",
           "powershell",
-          "script",
-          "script-runner"
-        ],
-        "toolReferenceName": "runScript",
-        "displayName": "Run PowerShell Script",
-        "modelDescription": "Runs a PowerShell script by writing it to a temp file and executing it. This is ideal for multi-line commands that would fail with direct terminal execution. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Supports background mode for long-running processes (servers, watch tasks) - set isBackground=true to return immediately with a terminal ID. Note: PowerShell is the RECOMMENDED choice for Windows environments.",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(terminal-powershell)",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "script": {
-              "type": "string",
-              "description": "The PowerShell script content to execute. Can be multi-line."
-            },
-            "workingDirectory": {
-              "type": "string",
-              "description": "The working directory to run the script in. Defaults to current directory."
-            },
-            "timeoutMs": {
-              "type": "number",
-              "description": "Timeout in milliseconds."
-            },
-            "keepScript": {
-              "type": "boolean",
-              "description": "If true, keeps the temp script file after execution for debugging.",
-              "default": false
-            },
-            "isBackground": {
-              "type": "boolean",
-              "description": "If true, starts the script as a background process and returns immediately with a terminal ID. Use this for long-running processes like servers or watch tasks.",
-              "default": false
-            }
-          },
-          "required": [
-            "script"
-          ]
-        }
-      },
-      {
-        "name": "script-runner_run_bash_script",
-        "tags": [
-          "terminal",
           "bash",
           "wsl",
           "script",
           "script-runner"
         ],
-        "toolReferenceName": "runBashScript",
-        "displayName": "Run Bash Script",
-        "modelDescription": "Runs a Bash script by writing it to a temp file and executing it. Supports native bash (Linux/macOS/Remote SSH), WSL, or Git Bash on Windows. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Supports background mode for long-running processes - set isBackground=true to return immediately with a terminal ID. Use shell='native' for Linux remotes or when running on Linux/macOS directly.",
+        "toolReferenceName": "runScript",
+        "displayName": "Run Script",
+        "modelDescription": "Runs a script by writing it to a temp file and executing it. Supports multiple shells: PowerShell (default on Windows), Bash, WSL, Git Bash, Zsh, and Fish. This is ideal for multi-line commands that would fail with direct terminal execution. The script file is automatically cleaned up after execution. Returns stdout, stderr, and exit code. Supports background mode for long-running processes (servers, watch tasks) - set isBackground=true to return immediately with a terminal ID.",
         "canBeReferencedInPrompt": true,
-        "icon": "$(terminal-bash)",
+        "icon": "$(terminal)",
         "inputSchema": {
           "type": "object",
           "properties": {
             "script": {
               "type": "string",
-              "description": "The Bash script content to execute. Can be multi-line."
-            },
-            "workingDirectory": {
-              "type": "string",
-              "description": "The working directory to run the script in. Defaults to current directory."
+              "description": "The script content to execute. Can be multi-line."
             },
             "shell": {
               "type": "string",
               "enum": [
-                "native",
+                "powershell",
+                "bash",
                 "wsl",
-                "gitbash"
+                "gitbash",
+                "zsh",
+                "fish"
               ],
-              "description": "Which shell to use. 'native' for direct bash execution (Linux/macOS/Remote SSH), 'wsl' for Windows Subsystem for Linux, 'gitbash' for Git Bash on Windows.",
-              "default": "native"
+              "description": "Which shell to use. 'powershell' (default) for PowerShell, 'bash' for native Bash (Linux/macOS/Remote SSH), 'wsl' for Windows Subsystem for Linux, 'gitbash' for Git Bash on Windows, 'zsh' for Z shell, 'fish' for Fish shell.",
+              "default": "powershell"
+            },
+            "workingDirectory": {
+              "type": "string",
+              "description": "The working directory to run the script in. Defaults to current directory."
             },
             "timeoutMs": {
               "type": "number",
@@ -169,7 +129,7 @@
         ],
         "toolReferenceName": "getScriptOutput",
         "displayName": "Get Script Output",
-        "modelDescription": "Retrieves the output from a Script Runner terminal by its ID. Use this to check the output of background processes or previously executed scripts. The terminal ID is returned by runScript and runBashScript tools.",
+        "modelDescription": "Retrieves the output from a Script Runner terminal by its ID. Use this to check the output of background processes or previously executed scripts. The terminal ID is returned by runScript tool.",
         "canBeReferencedInPrompt": true,
         "icon": "$(output)",
         "inputSchema": {

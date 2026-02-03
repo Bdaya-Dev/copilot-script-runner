@@ -291,10 +291,15 @@ export async function executeInTerminal(
  * Build the command to execute a script based on the shell type.
  * 
  * This handles the differences between shells:
- * - PowerShell: Uses *>&1 to merge streams and Out-String for text output
+ * - PowerShell: Uses *>&1 to merge streams and Out-Host for streaming output
  * - Bash/Zsh: Uses 2>&1 to merge stderr into stdout
  * - Fish: Uses 2>&1 redirection
  * - CMD: Uses 2>&1 redirection
+ * 
+ * Note: Out-Host is preferred over Out-String because:
+ * - Out-Host streams output in real-time as commands execute
+ * - Out-String buffers all output until complete, blocking progress display
+ * - Out-Host allows Write-Progress and other progress indicators to work correctly
  * 
  * @param scriptPath - Path to the script file
  * @param shellType - The shell type to format the command for
@@ -303,8 +308,8 @@ export async function executeInTerminal(
 export function buildScriptCommand(scriptPath: string, shellType: ShellType, executingFromShell?: ShellType): string {
     switch (shellType) {
         case ShellType.PowerShell:
-            // *>&1 merges all PowerShell streams into stdout, Out-String converts objects to text
-            return `pwsh -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" *>&1 | Out-String -Width 4096`;
+            // *>&1 merges all PowerShell streams into stdout, Out-Host streams output in real-time
+            return `pwsh -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" *>&1 | Out-Host`;
         
         case ShellType.Bash:
         case ShellType.Zsh:
@@ -395,8 +400,13 @@ export async function executeScript(
  * Execute a PowerShell script file in VS Code terminal.
  * 
  * Uses *>&1 to merge all PowerShell streams (Error, Warning, Verbose, Debug, Info)
- * into the Success stream, then pipes through Out-String to convert objects to text.
- * This ensures all output including errors is captured as text.
+ * into the Success stream, then pipes through Out-Host for real-time streaming output.
+ * This ensures all output including errors is displayed as it's generated.
+ * 
+ * Out-Host is preferred over Out-String because it:
+ * - Streams output in real-time rather than buffering until complete
+ * - Allows Write-Progress and progress bars to display correctly
+ * - Doesn't block waiting for all input before producing output
  * 
  * @see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_redirection
  */

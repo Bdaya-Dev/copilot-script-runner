@@ -53,19 +53,33 @@ Use #runScript to check my gcloud configuration
 ```
 
 ```text
-Use #runBashScript with wsl to run a Linux deployment script
+Use #runScript with shell="wsl" to run a Linux deployment script
 ```
 
-The AI agent will use the appropriate tool to execute your commands reliably.
+```text
+Use #runScript with shell="bash" to run commands on this Linux remote
+```
+
+The AI agent will use the appropriate shell to execute your commands reliably.
 
 ---
 
 ## Tools Provided
 
-### `#runScript` — PowerShell (Recommended for Windows)
+### `#runScript` — Unified Script Runner
 
-Executes PowerShell scripts with full stream capture. All PowerShell streams (Error, Warning, Verbose, Debug, Information) are merged and returned as text.
+Executes scripts with full stream capture. Supports multiple shells via the `shell` parameter:
 
+| Shell | Description |
+| ----- | ----------- |
+| `powershell` | PowerShell (default on Windows) |
+| `bash` | Native Bash (Linux/macOS/Remote SSH) |
+| `wsl` | Windows Subsystem for Linux |
+| `gitbash` | Git Bash on Windows |
+| `zsh` | Z shell |
+| `fish` | Fish shell |
+
+**PowerShell Example:**
 ```powershell
 # Works perfectly:
 gcloud projects list
@@ -79,10 +93,7 @@ foreach ($svc in $services) {
 }
 ```
 
-### `#runBashScript` — Bash (Native, WSL, or Git Bash)
-
-Executes Bash scripts directly on Linux/macOS, via WSL, or via Git Bash on Windows. Stderr is automatically merged with stdout.
-
+**Bash Example (via WSL, Git Bash, or native):**
 ```bash
 # Works on any platform:
 uname -a
@@ -93,10 +104,6 @@ kubectl apply -f manifests/
 git status
 git log --oneline -10
 ```
-
-**Shell options:**
-
-- `native` (default) — Direct bash execution. Use for Linux, macOS, or Remote SSH
 - `wsl` — Windows Subsystem for Linux
 - `gitbash` — Git Bash on Windows
 
@@ -116,7 +123,7 @@ Retrieves output from a Script Runner terminal by its ID. Essential for checking
 Use #getScriptOutput with id="a8cc5ce0" to check the server output
 ```
 
-> **Note:** This tool uses Script Runner's terminal IDs (returned by `#runScript` and `#runBashScript`), not VS Code's built-in terminal IDs.
+> **Note:** This tool uses Script Runner's terminal IDs (returned by `#runScript`), not VS Code's built-in terminal IDs.
 
 ---
 
@@ -126,18 +133,8 @@ Use #getScriptOutput with id="a8cc5ce0" to check the server output
 
 | Parameter | Type | Default | Description |
 | ----------- | ------ | --------- | ------------- |
-| `script` | string | *required* | The PowerShell script to execute |
-| `isBackground` | boolean | `false` | Return immediately for long-running processes |
-| `timeoutMs` | number | — | Timeout in milliseconds |
-| `keepScript` | boolean | `false` | Keep the temp file for debugging |
-| `workingDirectory` | string | cwd | Directory to run the script in |
-
-### #runBashScript
-
-| Parameter | Type | Default | Description |
-| ----------- | ------ | --------- | ------------- |
-| `script` | string | *required* | The Bash script to execute |
-| `shell` | `"native"` \| `"wsl"` \| `"gitbash"` | `"native"` | Which Bash environment to use |
+| `script` | string | *required* | The script to execute |
+| `shell` | `"powershell"` \| `"bash"` \| `"wsl"` \| `"gitbash"` \| `"zsh"` \| `"fish"` | `"powershell"` | Which shell to use |
 | `isBackground` | boolean | `false` | Return immediately for long-running processes |
 | `timeoutMs` | number | — | Timeout in milliseconds |
 | `keepScript` | boolean | `false` | Keep the temp file for debugging |
@@ -173,7 +170,7 @@ The extension intelligently manages terminals:
 The extension works with VS Code Remote SSH:
 
 ```text
-Use #runBashScript with shell="native" to run commands on the remote server
+Use #runScript with shell="bash" to run commands on the remote server
 ```
 
 When connected to a remote host:
@@ -182,11 +179,12 @@ When connected to a remote host:
 - Bash executes **on the remote server**
 - Output is captured and returned to the agent
 
-**Recommended settings for remote:**
+**Recommended shell settings for remote:**
 
-| Platform | Shell |
-| -------- | ----- |
-| Linux remote | `shell="native"` (default) |
+| Platform | Shell Parameter |
+| -------- | --------------- |
+| Linux remote | `shell="bash"` |
+| macOS remote | `shell="bash"` or `shell="zsh"` |
 | Windows remote with WSL | `shell="wsl"` |
 | Windows remote with Git Bash | `shell="gitbash"` |
 
@@ -204,11 +202,11 @@ flowchart LR
 
 ### Technical Details
 
-**PowerShell:** Commands are wrapped with `*>&1 | Out-String -Width 4096` to:
+**PowerShell:** Commands are wrapped with `*>&1 | Out-Host` to:
 
 - Merge all 6 PowerShell streams into stdout
-- Convert objects to readable text
-- Prevent pagers from activating
+- Stream output in real-time (no buffering)
+- Allow progress bars and Write-Progress to display correctly
 
 **WSL:** Commands run inside `wsl bash -c '...'` to ensure:
 
