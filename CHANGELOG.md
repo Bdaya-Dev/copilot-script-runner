@@ -1,3 +1,13 @@
+## [3.0.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.3.1...v3.0.0) (2026-02-03)
+
+### ⚠ BREAKING CHANGES
+
+* unify script execution tools and enhance shell support in README and package.json
+
+### Features
+
+* unify script execution tools and enhance shell support in README and package.json ([61a096d](https://github.com/bdaya-dev/copilot-script-runner/commit/61a096d20a25f1e0367bd64a891b75661619039d))
+
 ## [2.3.1](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.3.0...v2.3.1) (2026-01-29)
 
 # [2.3.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.2.0...v2.3.0) (2026-01-29)
