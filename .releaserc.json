@@ -4,24 +4,21 @@
     [
       "@semantic-release/commit-analyzer",
       {
-        "preset": "angular",
+        "preset": "conventionalcommits",
         "releaseRules": [
-          { "type": "feat", "release": "minor" },
-          { "type": "fix", "release": "patch" },
-          { "type": "perf", "release": "patch" },
-          { "type": "refactor", "release": "patch" },
-          { "type": "revert", "release": "patch" },
           { "type": "docs", "release": "patch" },
+          { "type": "refactor", "release": "patch" },
           { "type": "style", "release": "patch" },
-          { "type": "chore", "scope": "deps", "release": "patch" },
-          { "scope": "no-release", "release": false }
-        ],
-        "parserOpts": {
-          "noteKeywords": ["BREAKING CHANGE", "BREAKING CHANGES"]
-        }
+          { "type": "chore", "scope": "deps", "release": "patch" }
+        ]
       }
     ],
-    "@semantic-release/release-notes-generator",
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits"
+      }
+    ],
     "@semantic-release/changelog",
     ["@semantic-release/npm", {
       "npmPublish": false
