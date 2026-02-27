@@ -1,3 +1,25 @@
+## [4.0.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v3.0.0...v4.0.0) (2026-02-27)
+
+### ⚠ BREAKING CHANGES
+
+* getScriptOutput now requires 'commandId' instead of 'id' parameter. The 'terminalId' field is removed from ScriptResult; use 'commandId' instead.
+
+- Replace terminalId with commandId in ScriptResult and all public APIs
+- Add Command interface with background output buffering via completionPromise
+- Each execution.read() gets its own stream, so background reader accumulates
+  output continuously without conflicting with foreground collection
+- Add 'waitForCompletion' option to getScriptOutput (default: false)
+  - false: returns immediately with output collected so far + running/completed status
+  - true: awaits command completion, then returns full output
+- Add 'closeOnTimeout' option to runScript: sends Ctrl+C (SIGINT) instead of
+  disposing the terminal, keeping it alive for reuse
+- Remove legacy lastExecutions map and getLastExecution export
+- Terminal IDs remain internal for terminal reuse/busy tracking
+
+### Features
+
+* replace terminal ID with command-based tracking and add output buffering ([609ac72](https://github.com/bdaya-dev/copilot-script-runner/commit/609ac724bb0a3fe92810c44c3b3ac4508899a4e3))
+
 ## [3.0.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v2.3.1...v3.0.0) (2026-02-03)
 
 ### ⚠ BREAKING CHANGES
