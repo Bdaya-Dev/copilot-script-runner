@@ -4,7 +4,6 @@ import {
     generateScriptPath,
     executeScript,
     writeScriptFile,
-    cleanupScriptFile,
     formatOutput,
     getScriptExtension,
     ShellType
@@ -85,14 +84,10 @@ export class RunScriptTool implements vscode.LanguageModelTool<IRunScriptParamet
             }
 
             await writeScriptFile(scriptPath, processedScript);
-            const result = await executeScript(scriptPath, shellType, timeoutMs, isBackground, closeOnTimeout);
+            const result = await executeScript(scriptPath, shellType, timeoutMs, isBackground, closeOnTimeout, keepScript, workingDirectory);
 
-            // For background processes, don't clean up immediately
-            if (!keepScript && !isBackground) {
-                await cleanupScriptFile(scriptPath);
-            }
 
-            const output = formatOutput(result, keepScript || isBackground, scriptPath);
+            const output = formatOutput(result, keepScript, scriptPath);
 
             return new vscode.LanguageModelToolResult([
                 new vscode.LanguageModelTextPart(output)
