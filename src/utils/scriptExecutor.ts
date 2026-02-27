@@ -8,8 +8,26 @@ export interface ScriptResult {
     stdout: string;
     stderr: string;
     exitCode: number;
-    terminalId?: string;
+    commandId?: string;
     isBackground?: boolean;
+}
+
+/**
+ * Represents a tracked command execution.
+ * Each invocation of runScript produces a unique command.
+ */
+export interface Command {
+    commandId: string;
+    terminalId: string;
+    execution: vscode.TerminalShellExecution;
+    closeOnTimeout: boolean;
+    startedAt: number;
+    /** Accumulated output from the command so far */
+    output: string;
+    /** Whether the command stream has finished */
+    completed: boolean;
+    /** Resolves when the command stream ends */
+    completionPromise: Promise<void>;
 }
 
 /**
@@ -79,14 +97,21 @@ const activeTerminals = new Map<string, vscode.Terminal>();
 // Track which terminals are currently busy executing a command
 const busyTerminals = new Set<string>();
 
-// Store the last execution for each terminal (for getScriptOutput)
-const lastExecutions = new Map<string, vscode.TerminalShellExecution>();
+// Store tracked commands by commandId
+const commands = new Map<string, Command>();
 
 /**
- * Get the last execution for a terminal by ID
+ * Get a tracked command by its command ID
  */
-export function getLastExecution(terminalId: string): vscode.TerminalShellExecution | undefined {
-    return lastExecutions.get(terminalId);
+export function getCommand(commandId: string): Command | undefined {
+    return commands.get(commandId);
+}
+
+/**
+ * Generate a unique command ID
+ */
+export function generateCommandId(): string {
+    return `cmd-${randomUUID().substring(0, 8)}`;
 }
 
 /**
@@ -171,7 +196,8 @@ export async function executeInTerminal(
     command: string,
     terminalName: string = 'Script Runner',
     isBackground: boolean = false,
-    timeoutMs?: number
+    timeoutMs?: number,
+    closeOnTimeout: boolean = false
 ): Promise<ScriptResult> {
     let terminal: vscode.Terminal;
     let terminalId: string;
@@ -219,23 +245,48 @@ export async function executeInTerminal(
         return {
             stdout: '',
             stderr: (e as Error).message,
-            exitCode: 1,
-            terminalId
+            exitCode: 1
         };
     }
 
     const execution = terminal.shellIntegration!.executeCommand(command);
+    const commandId = generateCommandId();
     
-    // Store the execution for later retrieval via getScriptOutput
-    lastExecutions.set(terminalId, execution);
+    // Track command with background output collection
+    const cmd: Command = {
+        commandId,
+        terminalId,
+        execution,
+        closeOnTimeout,
+        startedAt: Date.now(),
+        output: '',
+        completed: false,
+        completionPromise: Promise.resolve()
+    };
+    // Start background reader that accumulates output continuously.
+    // execution.read() returns a fresh AsyncIterable replaying from the start,
+    // so this doesn't conflict with the foreground reader below.
+    cmd.completionPromise = (async () => {
+        try {
+            const bgStream = execution.read();
+            for await (const chunk of bgStream) {
+                cmd.output += chunk;
+            }
+        } catch {
+            // Stream ended or errored
+        } finally {
+            cmd.completed = true;
+        }
+    })();
+    commands.set(commandId, cmd);
     
     // For background processes, return immediately
     if (isBackground) {
         return {
-            stdout: `Background process started in terminal ${terminalId}. Use #getScriptOutput with this ID to check output later.`,
+            stdout: `Background process started. Command ID: ${commandId}. Use #getScriptOutput with the command ID to check output later.`,
             stderr: '',
             exitCode: 0,
-            terminalId,
+            commandId,
             isBackground: true
         };
     }
@@ -271,11 +322,17 @@ export async function executeInTerminal(
     busyTerminals.delete(terminalId);
     
     if (result === 'timeout') {
+        if (closeOnTimeout) {
+            // Send Ctrl+C (SIGINT) to stop the running command but keep the terminal alive for reuse
+            terminal.sendText('\x03', false);
+        }
+        // Mark terminal as idle so it can be reused
+        busyTerminals.delete(terminalId);
         return {
-            stdout: output + '\n\n[Output truncated - command timed out or is still running. Terminal ID: ' + terminalId + ']',
+            stdout: output + '\n\n[Output truncated - command timed out or is still running.' + (closeOnTimeout ? ' Command was interrupted (Ctrl+C).' : '') + ' Command ID: ' + commandId + ']',
             stderr: '',
-            exitCode: 0,
-            terminalId
+            exitCode: closeOnTimeout ? 1 : 0,
+            commandId
         };
     }
 
@@ -283,7 +340,7 @@ export async function executeInTerminal(
         stdout: output,
         stderr: '',
         exitCode: 0,
-        terminalId
+        commandId
     };
 }
 
@@ -383,7 +440,8 @@ export async function executeScript(
     scriptPath: string,
     shellType?: ShellType,
     timeoutMs?: number,
-    isBackground: boolean = false
+    isBackground: boolean = false,
+    closeOnTimeout: boolean = false
 ): Promise<ScriptResult> {
     const effectiveShellType = shellType ?? getDefaultShellType();
     const terminalName = `Script Runner (${effectiveShellType})`;
@@ -393,7 +451,7 @@ export async function executeScript(
     const executingFromShell = getDefaultShellType();
     const command = buildScriptCommand(scriptPath, effectiveShellType, executingFromShell);
     
-    return executeInTerminal(command, terminalName, isBackground, timeoutMs);
+    return executeInTerminal(command, terminalName, isBackground, timeoutMs, closeOnTimeout);
 }
 
 /**
@@ -494,8 +552,8 @@ export function formatOutput(result: ScriptResult, keepScript: boolean, scriptPa
     
     if (result.isBackground) {
         output.push(`Background process started.`);
-        output.push(`Terminal ID: ${result.terminalId}`);
-        output.push(`Use #getScriptOutput with this ID to check output later.`);
+        output.push(`Command ID: ${result.commandId}`);
+        output.push(`Use #getScriptOutput with the command ID to check output later.`);
         return output.join('\n');
     }
     
@@ -507,8 +565,8 @@ export function formatOutput(result: ScriptResult, keepScript: boolean, scriptPa
     }
     output.push(`\nExit Code: ${result.exitCode}`);
     
-    if (result.terminalId) {
-        output.push(`Terminal ID: ${result.terminalId}`);
+    if (result.commandId) {
+        output.push(`Command ID: ${result.commandId}`);
     }
     
     if (keepScript && scriptPath) {

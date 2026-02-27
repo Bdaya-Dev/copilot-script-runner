@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { getTerminalById, getLastExecution } from '../utils/scriptExecutor';
+import { getTerminalById, getCommand } from '../utils/scriptExecutor';
 
 interface IGetScriptOutputParameters {
-    id: string;
+    commandId: string;
+    waitForCompletion?: boolean;
 }
 
 export class GetScriptOutputTool implements vscode.LanguageModelTool<IGetScriptOutputParameters> {
@@ -10,42 +11,33 @@ export class GetScriptOutputTool implements vscode.LanguageModelTool<IGetScriptO
         options: vscode.LanguageModelToolInvocationOptions<IGetScriptOutputParameters>,
         _token: vscode.CancellationToken
     ): Promise<vscode.LanguageModelToolResult> {
-        const { id } = options.input;
+        const { commandId, waitForCompletion = false } = options.input;
 
-        const terminal = getTerminalById(id);
-        const execution = getLastExecution(id);
+        const command = getCommand(commandId);
+        if (!command) {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Command with ID "${commandId}" not found. It may have expired or the ID is invalid.`)
+            ]);
+        }
 
+        const terminal = getTerminalById(command.terminalId);
         if (!terminal) {
             return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart(`Terminal with ID "${id}" not found. It may have been closed or the ID is invalid.`)
+                new vscode.LanguageModelTextPart(`Terminal for command "${commandId}" not found. It may have been closed.`)
             ]);
         }
 
-        if (!execution) {
-            return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart(`No command execution found for terminal "${id}". The command may not have been executed yet.`)
-            ]);
-        }
-
-        // Read the output from the stored execution
-        let output = '';
-        try {
-            const stream = execution.read();
-            for await (const chunk of stream) {
-                output += chunk;
-            }
-        } catch (error) {
-            return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart(`Error reading output: ${(error as Error).message}`)
-            ]);
+        if (waitForCompletion && !command.completed) {
+            await command.completionPromise;
         }
 
         const result = [
             `Terminal: ${terminal.name}`,
-            `Terminal ID: ${id}`,
+            `Command ID: ${commandId}`,
+            `Status: ${command.completed ? 'completed' : 'running'}`,
             '',
             'Output:',
-            output || '(no output)',
+            command.output || '(no output)',
         ].join('\n');
 
         return new vscode.LanguageModelToolResult([

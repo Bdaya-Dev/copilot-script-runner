@@ -50,6 +50,7 @@ interface IRunScriptParameters {
     timeoutMs?: number;
     keepScript?: boolean;
     isBackground?: boolean;
+    closeOnTimeout?: boolean;
 }
 
 export class RunScriptTool implements vscode.LanguageModelTool<IRunScriptParameters> {
@@ -63,7 +64,8 @@ export class RunScriptTool implements vscode.LanguageModelTool<IRunScriptParamet
             workingDirectory, 
             timeoutMs,
             keepScript = false,
-            isBackground = false 
+            isBackground = false,
+            closeOnTimeout = false
         } = options.input;
 
         const shellType = shellInputToType[shell] ?? ShellType.PowerShell;
@@ -83,7 +85,7 @@ export class RunScriptTool implements vscode.LanguageModelTool<IRunScriptParamet
             }
 
             await writeScriptFile(scriptPath, processedScript);
-            const result = await executeScript(scriptPath, shellType, timeoutMs, isBackground);
+            const result = await executeScript(scriptPath, shellType, timeoutMs, isBackground, closeOnTimeout);
 
             // For background processes, don't clean up immediately
             if (!keepScript && !isBackground) {
