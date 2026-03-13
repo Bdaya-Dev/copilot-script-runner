@@ -4,12 +4,37 @@ import { join, basename } from 'path';
 import { randomUUID } from 'crypto';
 import * as vscode from 'vscode';
 
+/**
+ * Strip ANSI escape sequences and terminal control codes from text.
+ * Handles CSI sequences (cursor positioning, colors), OSC sequences
+ * (including VS Code shell integration 633), and other control characters
+ * that leak from terminal output.
+ */
+export function stripAnsiEscapes(text: string): string {
+  return text
+    // OSC sequences: ESC ] ... (BEL | ESC \) - includes VS Code shell integration (633)
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
+    // Incomplete OSC at end of string (partial sequence from chunked reading)
+    .replace(/\x1b\][^\x07]*$/g, '')
+    // CSI sequences: ESC [ <params> <intermediate> <final byte>
+    .replace(/\x1b\[[\d;?]*[A-Za-z]/g, '')
+    // Other two-char escape sequences: ESC + single char
+    .replace(/\x1b[^[\]]/g, '')
+    // Handle \r (carriage return) used for line overwriting: keep text after last \r per line
+    .replace(/[^\n]*\r(?!\n)/g, '')
+    // Remove remaining non-printable control characters (keep \n, \t)
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+}
+
 export interface ScriptResult {
   stdout: string;
   stderr: string;
   exitCode: number;
   commandId?: string;
+  terminalId?: string;
   isBackground?: boolean;
+  /** The command string sent to the terminal (for echo stripping) */
+  commandText?: string;
 }
 
 /**
@@ -32,6 +57,10 @@ export interface Command {
   scriptPath?: string;
   /** Whether to keep the script file after completion */
   keepScript?: boolean;
+  /** The command string that was sent to the terminal (used to strip echo from output) */
+  commandText: string;
+  /** The real shell exit code, populated by onDidEndTerminalShellExecution */
+  exitCode?: number;
 }
 
 /**
@@ -101,8 +130,33 @@ const activeTerminals = new Map<string, vscode.Terminal>();
 // Track which terminals are currently busy executing a command
 const busyTerminals = new Set<string>();
 
+// Terminals eligible for auto-selection pool (only auto-created ones, not explicitly named ones).
+// Explicitly named terminals (created via targetTerminalId) are reserved and should only be
+// reused when the caller provides that same ID — they must never be hijacked by the
+// auto-selector, even if idle.
+const pooledTerminals = new Set<string>();
+
 // Store tracked commands by commandId
 const commands = new Map<string, Command>();
+
+// Index from TerminalShellExecution → commandId for O(1) exit-code lookup.
+// Populated when a command is registered; cleaned up by evictStaleCommands.
+const executionToCommandId = new Map<vscode.TerminalShellExecution, string>();
+
+// Listen for shell execution end events to capture the real exit code.
+// This is registered once at module load and covers all commands.
+vscode.window.onDidEndTerminalShellExecution(e => {
+  const commandId = executionToCommandId.get(e.execution);
+  if (commandId) {
+    const cmd = commands.get(commandId);
+    if (cmd) {
+      cmd.exitCode = e.exitCode;
+    }
+  }
+});
+
+/** Max age for completed commands before they are evicted (30 minutes) */
+const COMMAND_TTL_MS = 30 * 60 * 1000;
 
 /**
  * Get a tracked command by its command ID
@@ -119,14 +173,71 @@ export function generateCommandId(): string {
 }
 
 /**
- * Find an existing idle Script Runner terminal or return undefined.
+ * Strip ANSI escapes AND the command echo from terminal output.
+ *
+ * execution.read() yields all terminal data while an execution is "current"
+ * (between shell integration markers OSC 633;B and 633;D). This includes the
+ * echoed command line (between B and C) before the actual output (between C
+ * and D). Stripping the echo prevents the invocation command from appearing
+ * in the returned output, which otherwise looks like bleed-through from
+ * previous invocations.
+ */
+export function cleanOutput(rawOutput: string, commandText?: string): string {
+  let cleaned = stripAnsiEscapes(rawOutput);
+
+  if (commandText) {
+    const cmdTrimmed = commandText.trim();
+    const idx = cleaned.indexOf(cmdTrimmed);
+    // Only strip when found near the beginning (< 500 chars handles long
+    // commands or prompt prefixes without matching a later occurrence in the
+    // actual script output).
+    if (idx !== -1 && idx < 500) {
+      cleaned = cleaned.substring(idx + cmdTrimmed.length).replace(/^\r?\n/, '');
+    }
+  }
+
+  return cleaned.trim();
+}
+
+/**
+ * Get the most recent command tracked for a terminal.
+ */
+export function getLastCommandForTerminal(terminalId: string): Command | undefined {
+  let latest: Command | undefined;
+  for (const cmd of commands.values()) {
+    if (cmd.terminalId === terminalId && (!latest || cmd.startedAt > latest.startedAt)) {
+      latest = cmd;
+    }
+  }
+  return latest;
+}
+
+/**
+ * Evict completed commands older than COMMAND_TTL_MS to prevent unbounded growth.
+ */
+function evictStaleCommands(): void {
+  const now = Date.now();
+  for (const [id, cmd] of commands) {
+    if (cmd.completed && now - cmd.startedAt > COMMAND_TTL_MS) {      executionToCommandId.delete(cmd.execution);      commands.delete(id);
+    }
+  }
+}
+
+/**
+ * Find an existing idle Script Runner terminal from the auto-selection pool.
+ * Only terminals that were originally created without an explicit terminalId are
+ * eligible — explicitly named terminals are reserved for direct targeting only.
  * If workingDirectory is specified, only returns a terminal whose current
  * working directory matches (via shell integration cwd).
  */
 function findIdleTerminal(terminalNamePrefix: string, workingDirectory?: string): { terminal: vscode.Terminal; terminalId: string } | undefined {
   for (const [terminalId, terminal] of activeTerminals) {
-    // Check if this terminal matches our prefix and is not busy
-    if (!terminal.name.startsWith(terminalNamePrefix) || busyTerminals.has(terminalId)) {
+    // Only consider pooled (auto-created) terminals, and skip busy ones
+    if (!pooledTerminals.has(terminalId) || busyTerminals.has(terminalId)) {
+      continue;
+    }
+    // Name prefix still acts as a secondary guard (shell-type match)
+    if (!terminal.name.startsWith(terminalNamePrefix)) {
       continue;
     }
 
@@ -183,22 +294,67 @@ export function getTerminalById(id: string): vscode.Terminal | undefined {
 }
 
 /**
- * Wait for shell integration to be available on a terminal
+ * Wait for shell integration to be available on a terminal.
+ *
+ * Mirrors the VS Code internal pattern (terminalInstance.ts runCommand):
+ * - Race between the integration event, a timeout, and terminal disposal
+ * - Dispose all listeners on resolution to prevent leaks
  */
-async function waitForShellIntegration(terminal: vscode.Terminal): Promise<void> {
+async function waitForShellIntegration(
+  terminal: vscode.Terminal,
+  token?: vscode.CancellationToken,
+  timeoutMs: number = 15_000
+): Promise<void> {
   // Already available
   if (terminal.shellIntegration) {
     return;
   }
 
-  // Wait for it to become available
-  return new Promise<void>((resolve) => {
-    const disposable = vscode.window.onDidChangeTerminalShellIntegration((e) => {
-      if (e.terminal === terminal) {
-        disposable.dispose();
-        resolve();
+  return new Promise<void>((resolve, reject) => {
+    const disposables: vscode.Disposable[] = [];
+
+    const cleanup = () => {
+      for (const d of disposables) {
+        d.dispose();
       }
-    });
+    };
+
+    // Shell integration activated
+    disposables.push(
+      vscode.window.onDidChangeTerminalShellIntegration((e) => {
+        if (e.terminal === terminal) {
+          cleanup();
+          resolve();
+        }
+      })
+    );
+
+    // Terminal closed before integration was ready
+    disposables.push(
+      vscode.window.onDidCloseTerminal((t) => {
+        if (t === terminal) {
+          cleanup();
+          reject(new Error('Terminal closed before shell integration was available'));
+        }
+      })
+    );
+
+    // Cancellation token
+    if (token) {
+      disposables.push(
+        token.onCancellationRequested(() => {
+          cleanup();
+          reject(new Error('Cancelled while waiting for shell integration'));
+        })
+      );
+    }
+
+    // Timeout fallback — VS Code always pairs this wait with a timeout
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Shell integration did not activate within ${timeoutMs / 1000}s. Ensure terminal.integrated.shellIntegration.enabled is true.`));
+    }, timeoutMs);
+    disposables.push({ dispose: () => clearTimeout(timer) });
   });
 }
 
@@ -224,57 +380,114 @@ export async function executeInTerminal(
   closeOnTimeout: boolean = false,
   scriptPath?: string,
   keepScript: boolean = false,
-  workingDirectory?: string
+  workingDirectory?: string,
+  targetTerminalId?: string,
+  token?: vscode.CancellationToken
 ): Promise<ScriptResult> {
   let terminal: vscode.Terminal;
   let terminalId: string;
   let isNewTerminal = false;
 
-  // Try to find an existing idle terminal first (matching workingDirectory if specified)
-  const existing = findIdleTerminal(terminalName, workingDirectory);
-  if (existing) {
-    terminal = existing.terminal;
-    terminalId = existing.terminalId;
+  if (targetTerminalId) {
+    // Target a specific terminal by ID, creating it if it doesn't exist
+    const existingTerminal = activeTerminals.get(targetTerminalId);
+    if (existingTerminal) {
+      terminal = existingTerminal;
+      terminalId = targetTerminalId;
+    } else {
+      terminalId = targetTerminalId;
+      terminal = vscode.window.createTerminal({
+        name: `${terminalName} (${terminalId})`,
+        cwd: workingDirectory,
+      });
+      isNewTerminal = true;
+
+      // Explicitly named terminal — add to activeTerminals but NOT to pooledTerminals
+      // so the auto-selector never steals it
+      activeTerminals.set(terminalId, terminal);
+
+      const disposeListener = vscode.window.onDidCloseTerminal((t) => {
+        if (t === terminal) {
+          activeTerminals.delete(terminalId);
+          busyTerminals.delete(terminalId);
+          disposeListener.dispose();
+        }
+      });
+    }
   } else {
-    // Create a new terminal if no idle one is available
-    terminalId = generateTerminalId();
-    terminal = vscode.window.createTerminal({
-      name: `${terminalName} (${terminalId})`,
-      cwd: workingDirectory,
-    });
-    isNewTerminal = true;
+    // Try to find an existing idle terminal first (matching workingDirectory if specified)
+    const existing = findIdleTerminal(terminalName, workingDirectory);
+    if (existing) {
+      terminal = existing.terminal;
+      terminalId = existing.terminalId;
+    } else {
+      // Create a new terminal if no idle one is available
+      terminalId = generateTerminalId();
+      terminal = vscode.window.createTerminal({
+        name: `${terminalName} (${terminalId})`,
+        cwd: workingDirectory,
+      });
+      isNewTerminal = true;
 
-    // Store terminal for tracking
-    activeTerminals.set(terminalId, terminal);
+      // Store terminal in both the active map and the auto-select pool
+      activeTerminals.set(terminalId, terminal);
+      pooledTerminals.add(terminalId);
 
-    // Clean up when terminal is closed
-    const disposeListener = vscode.window.onDidCloseTerminal((t) => {
-      if (t === terminal) {
-        activeTerminals.delete(terminalId);
-        busyTerminals.delete(terminalId);
-        disposeListener.dispose();
-      }
-    });
+      // Clean up when terminal is closed
+      const disposeListener = vscode.window.onDidCloseTerminal((t) => {
+        if (t === terminal) {
+          activeTerminals.delete(terminalId);
+          busyTerminals.delete(terminalId);
+          pooledTerminals.delete(terminalId);
+          disposeListener.dispose();
+        }
+      });
+    }
   }
 
   // Mark terminal as busy
   busyTerminals.add(terminalId);
 
+  // Evict old completed commands to prevent unbounded Map growth
+  evictStaleCommands();
+
   try {
-    // Only wait for shell integration on new terminals
     if (isNewTerminal) {
-      await waitForShellIntegration(terminal);
+      // New terminal: wait for shell integration to activate
+      await waitForShellIntegration(terminal, token);
+    } else {
+      // Reused terminal: wait for the previous command's execution stream to
+      // fully close. VS Code's built-in tools wait for "idle" (no data for
+      // 1 s); we accomplish the same by awaiting the last command's
+      // completionPromise which resolves when execution.read() finishes
+      // (i.e., all data between OSC 633;B and 633;D has been delivered).
+      const lastCmd = getLastCommandForTerminal(terminalId);
+      if (lastCmd && !lastCmd.completed) {
+        await lastCmd.completionPromise;
+      }
     }
   } catch (e) {
     busyTerminals.delete(terminalId);
     return {
       stdout: '',
       stderr: (e as Error).message,
-      exitCode: 1
+      exitCode: 1,
+      terminalId
     };
   }
 
-  const execution = terminal.shellIntegration!.executeCommand(command);
+  // Fix C: guard against shellIntegration disappearing between the wait and the execute
+  if (!terminal.shellIntegration) {
+    busyTerminals.delete(terminalId);
+    return {
+      stdout: '',
+      stderr: 'Shell integration is not available on this terminal. Ensure terminal.integrated.shellIntegration.enabled is true.',
+      exitCode: 1,
+      terminalId
+    };
+  }
+
+  const execution = terminal.shellIntegration.executeCommand(command);
   const commandId = generateCommandId();
 
   // Track command with background output collection
@@ -288,7 +501,8 @@ export async function executeInTerminal(
     completed: false,
     completionPromise: Promise.resolve(),
     scriptPath,
-    keepScript
+    keepScript,
+    commandText: command
   };
   // Start background reader that accumulates output continuously.
   // execution.read() returns a fresh AsyncIterable replaying from the start,
@@ -310,6 +524,7 @@ export async function executeInTerminal(
     }
   })();
   commands.set(commandId, cmd);
+  executionToCommandId.set(execution, commandId);
 
   // For background processes, return immediately
   if (isBackground) {
@@ -318,60 +533,53 @@ export async function executeInTerminal(
       stderr: '',
       exitCode: 0,
       commandId,
+      terminalId,
       isBackground: true
     };
   }
 
-  // For foreground processes, collect output with optional timeout handling
-  // The shell integration stream will complete when the command finishes
-  const stream = execution.read();
-  let output = '';
-
-  const outputPromise = (async () => {
-    try {
-      for await (const chunk of stream) {
-        output += chunk;
-      }
-      return 'complete' as const;
-    } catch {
-      return 'error' as const;
-    }
-  })();
-
+  // For foreground processes, race cmd.completionPromise (the single background reader)
+  // against an optional timeout. Using cmd.output as the sole output source ensures the
+  // foreground and background views are identical — Fix D.
   let result: 'complete' | 'error' | 'timeout';
 
   if (timeoutMs !== undefined) {
     const timeoutPromise = new Promise<'timeout'>((resolve) => {
       setTimeout(() => resolve('timeout'), timeoutMs);
     });
-    result = await Promise.race([outputPromise, timeoutPromise]);
+    result = await Promise.race([
+      cmd.completionPromise.then(() => 'complete' as const).catch(() => 'error' as const),
+      timeoutPromise
+    ]);
   } else {
-    result = await outputPromise;
+    result = await cmd.completionPromise.then(() => 'complete' as const).catch(() => 'error' as const);
   }
 
-  // Mark terminal as idle again
+  // Mark terminal as idle
   busyTerminals.delete(terminalId);
 
   if (result === 'timeout') {
     if (closeOnTimeout) {
-      // Send Ctrl+C (SIGINT) to stop the running command but keep the terminal alive for reuse
+      // Send Ctrl+C (SIGINT) to interrupt the running command
       terminal.sendText('\x03', false);
     }
-    // Mark terminal as idle so it can be reused
-    busyTerminals.delete(terminalId);
     return {
-      stdout: output + '\n\n[Output truncated - command timed out or is still running.' + (closeOnTimeout ? ' Command was interrupted (Ctrl+C).' : '') + ' Command ID: ' + commandId + ']',
+      stdout: cmd.output + '\n\n[Output truncated - command timed out or is still running.' + (closeOnTimeout ? ' Command was interrupted (Ctrl+C).' : '') + ' Command ID: ' + commandId + ']',
       stderr: '',
       exitCode: closeOnTimeout ? 1 : 0,
-      commandId
+      commandId,
+      terminalId,
+      commandText: command
     };
   }
 
   return {
-    stdout: output,
+    stdout: cmd.output,
     stderr: '',
-    exitCode: 0,
-    commandId
+    exitCode: cmd.exitCode ?? 0,
+    commandId,
+    terminalId,
+    commandText: command
   };
 }
 
@@ -474,7 +682,9 @@ export async function executeScript(
   isBackground: boolean = false,
   closeOnTimeout: boolean = false,
   keepScript: boolean = false,
-  workingDirectory?: string
+  workingDirectory?: string,
+  targetTerminalId?: string,
+  token?: vscode.CancellationToken
 ): Promise<ScriptResult> {
   const effectiveShellType = shellType ?? getDefaultShellType();
   const terminalName = `Script Runner (${effectiveShellType})`;
@@ -484,7 +694,7 @@ export async function executeScript(
   const executingFromShell = getDefaultShellType();
   const command = buildScriptCommand(scriptPath, effectiveShellType, executingFromShell);
 
-  return executeInTerminal(command, terminalName, isBackground, timeoutMs, closeOnTimeout, scriptPath, keepScript, workingDirectory);
+  return executeInTerminal(command, terminalName, isBackground, timeoutMs, closeOnTimeout, scriptPath, keepScript, workingDirectory, targetTerminalId, token);
 }
 
 /**
@@ -503,11 +713,11 @@ export async function executeScript(
  */
 export async function executePowerShellScript(
   scriptPath: string,
-  _workingDirectory?: string,
+  workingDirectory?: string,
   timeoutMs?: number,
   isBackground: boolean = false
 ): Promise<ScriptResult> {
-  return executeScript(scriptPath, ShellType.PowerShell, timeoutMs, isBackground);
+  return executeScript(scriptPath, ShellType.PowerShell, timeoutMs, isBackground, false, false, workingDirectory);
 }
 
 /**
@@ -521,11 +731,11 @@ export async function executePowerShellScript(
  */
 export async function executeWslScript(
   scriptPath: string,
-  _workingDirectory?: string,
+  workingDirectory?: string,
   timeoutMs?: number,
   isBackground: boolean = false
 ): Promise<ScriptResult> {
-  return executeScript(scriptPath, ShellType.Wsl, timeoutMs, isBackground);
+  return executeScript(scriptPath, ShellType.Wsl, timeoutMs, isBackground, false, false, workingDirectory);
 }
 
 /**
@@ -538,11 +748,11 @@ export async function executeWslScript(
  */
 export async function executeGitBashScript(
   scriptPath: string,
-  _workingDirectory?: string,
+  workingDirectory?: string,
   timeoutMs?: number,
   isBackground: boolean = false
 ): Promise<ScriptResult> {
-  return executeScript(scriptPath, ShellType.GitBash, timeoutMs, isBackground);
+  return executeScript(scriptPath, ShellType.GitBash, timeoutMs, isBackground, false, false, workingDirectory);
 }
 
 /**
@@ -552,11 +762,11 @@ export async function executeGitBashScript(
  */
 export async function executeBashScript(
   scriptPath: string,
-  _workingDirectory?: string,
+  workingDirectory?: string,
   timeoutMs?: number,
   isBackground: boolean = false
 ): Promise<ScriptResult> {
-  return executeScript(scriptPath, ShellType.Bash, timeoutMs, isBackground);
+  return executeScript(scriptPath, ShellType.Bash, timeoutMs, isBackground, false, false, workingDirectory);
 }
 
 /**
@@ -585,16 +795,17 @@ export function formatOutput(result: ScriptResult, keepScript: boolean, scriptPa
 
   if (result.isBackground) {
     output.push(`Background process started.`);
+    output.push(`Terminal ID: ${result.terminalId}`);
     output.push(`Command ID: ${result.commandId}`);
     output.push(`Use #getScriptOutput with the command ID to check output later.`);
     return output.join('\n');
   }
 
   if (result.stdout) {
-    output.push(`STDOUT:\n${result.stdout}`);
+    output.push(`STDOUT:\n${cleanOutput(result.stdout, result.commandText)}`);
   }
   if (result.stderr) {
-    output.push(`STDERR:\n${result.stderr}`);
+    output.push(`STDERR:\n${stripAnsiEscapes(result.stderr)}`);
   }
   output.push(`\nExit Code: ${result.exitCode}`);
 
@@ -602,9 +813,90 @@ export function formatOutput(result: ScriptResult, keepScript: boolean, scriptPa
     output.push(`Command ID: ${result.commandId}`);
   }
 
+  if (result.terminalId) {
+    output.push(`Terminal ID: ${result.terminalId}`);
+  }
+
   if (keepScript && scriptPath) {
     output.push(`Script saved at: ${scriptPath}`);
   }
 
   return output.join('\n') || '(no output)';
+}
+
+/**
+ * Get all active terminals with their metadata
+ */
+export function getAllTerminals(): { terminalId: string; name: string; isBusy: boolean; cwd?: string }[] {
+  const result: { terminalId: string; name: string; isBusy: boolean; cwd?: string }[] = [];
+  for (const [terminalId, terminal] of activeTerminals) {
+    result.push({
+      terminalId,
+      name: terminal.name,
+      isBusy: busyTerminals.has(terminalId),
+      cwd: terminal.shellIntegration?.cwd?.fsPath
+    });
+  }
+  return result;
+}
+
+/**
+ * Get all commands for a specific terminal
+ */
+export function getCommandsForTerminal(terminalId: string): Command[] {
+  const result: Command[] = [];
+  for (const cmd of commands.values()) {
+    if (cmd.terminalId === terminalId) {
+      result.push(cmd);
+    }
+  }
+  return result;
+}
+
+/**
+ * Get all tracked commands
+ */
+export function getAllCommands(): Map<string, Command> {
+  return new Map(commands);
+}
+
+/**
+ * Check if a terminal is busy
+ */
+export function isTerminalBusy(terminalId: string): boolean {
+  return busyTerminals.has(terminalId);
+}
+
+/**
+ * Close a terminal by ID
+ */
+export function closeTerminalById(terminalId: string): boolean {
+  const terminal = activeTerminals.get(terminalId);
+  if (terminal) {
+    terminal.dispose();
+    activeTerminals.delete(terminalId);
+    busyTerminals.delete(terminalId);
+    pooledTerminals.delete(terminalId);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Send raw text to a terminal (does not press enter unless text includes \\n)
+ */
+export function sendTextToTerminal(terminalId: string, text: string, addNewline: boolean = false): boolean {
+  const terminal = activeTerminals.get(terminalId);
+  if (terminal) {
+    terminal.sendText(text, addNewline);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Send Ctrl+C (SIGINT) to interrupt the running process in a terminal
+ */
+export function interruptTerminal(terminalId: string): boolean {
+  return sendTextToTerminal(terminalId, '\x03', false);
 }

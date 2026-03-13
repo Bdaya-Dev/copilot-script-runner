@@ -55,7 +55,7 @@
         ],
         "toolReferenceName": "runScript",
         "displayName": "Run Script",
-        "modelDescription": "Runs a script by writing it to a temp file and executing it. Supports multiple shells: PowerShell (default on Windows), Bash, WSL, Git Bash, Zsh, and Fish. This is ideal for multi-line commands that would fail with direct terminal execution. The script file is automatically cleaned up after execution. Returns stdout, stderr, exit code, and a command ID. Supports background mode for long-running processes (servers, watch tasks) - set isBackground=true to return immediately with a command ID. Use the command ID with getScriptOutput to retrieve output later.",
+        "modelDescription": "Runs a script by writing it to a temp file and executing it. Supports multiple shells: PowerShell (default on Windows), Bash, WSL, Git Bash, Zsh, and Fish. This is ideal for multi-line commands that would fail with direct terminal execution. The script file is automatically cleaned up after execution. Returns stdout, stderr, exit code, a command ID, and a terminal ID. Supports background mode for long-running processes (servers, watch tasks) - set isBackground=true to return immediately with a command ID. Use the command ID with getScriptOutput to retrieve output later. Use terminalId to target a specific terminal for execution (e.g., to run parallel commands in separate terminals).",
         "canBeReferencedInPrompt": true,
         "icon": "$(terminal)",
         "inputSchema": {
@@ -100,6 +100,10 @@
               "type": "boolean",
               "description": "If true and the script times out, the running command will be interrupted (Ctrl+C / SIGINT) instead of just stopping output collection. The terminal is kept alive for reuse. Only meaningful when timeoutMs is set.",
               "default": false
+            },
+            "terminalId": {
+              "type": "string",
+              "description": "Target a specific terminal by its ID. If provided, the script will execute in that terminal instead of creating a new one or finding an idle one. Get terminal IDs from previous runScript responses or from listTerminals. Useful for running parallel commands in separate terminals."
             }
           },
           "required": [
@@ -134,7 +138,7 @@
         ],
         "toolReferenceName": "getScriptOutput",
         "displayName": "Get Script Output",
-        "modelDescription": "Retrieves the output from a previously executed script by its command ID. Use this to check the output of background processes or previously executed scripts. The command ID is returned by the runScript tool.",
+        "modelDescription": "Retrieves the output of a previously executed script. Identify the target via commandId (returned by runScript) OR terminalId (returns the most recent command on that terminal). At least one must be provided. Supports optional timeoutMs when waitForCompletion is true — returns partial output with status 'timed out (still running)' if the command does not finish in time.",
         "canBeReferencedInPrompt": true,
         "icon": "$(output)",
         "inputSchema": {
@@ -142,16 +146,79 @@
           "properties": {
             "commandId": {
               "type": "string",
-              "description": "The command ID returned by runScript."
+              "description": "The command ID returned by runScript. Provide this or terminalId."
+            },
+            "terminalId": {
+              "type": "string",
+              "description": "A terminal ID — returns the output of the most recent command run on that terminal. Provide this or commandId."
             },
             "waitForCompletion": {
               "type": "boolean",
               "description": "If true, waits for the command to finish before returning. If false (default), returns immediately with whatever output has been collected so far.",
               "default": false
+            },
+            "timeoutMs": {
+              "type": "number",
+              "description": "Maximum milliseconds to wait when waitForCompletion is true. If the command does not finish in time, returns partial output with status 'timed out (still running)'. Has no effect when waitForCompletion is false."
+            }
+          },
+          "required": []
+        }
+      },
+      {
+        "name": "script-runner_list_terminals",
+        "tags": [
+          "terminal",
+          "management",
+          "script-runner"
+        ],
+        "toolReferenceName": "listTerminals",
+        "displayName": "List Terminals",
+        "modelDescription": "Lists all active Script Runner terminals with their IDs, names, busy/idle status, working directories, and command history. Use this to find terminal IDs for targeting specific terminals with runScript, or to check which terminals have running processes before managing them.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(list-unordered)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "script-runner_manage_terminal",
+        "tags": [
+          "terminal",
+          "management",
+          "script-runner"
+        ],
+        "toolReferenceName": "manageTerminal",
+        "displayName": "Manage Terminal",
+        "modelDescription": "Manage an active Script Runner terminal. Actions: 'close' to dispose the terminal, 'interrupt' to send Ctrl+C (SIGINT) to stop a running process, 'send_input' to type text into the terminal (requires 'input' parameter). Use listTerminals first to get terminal IDs.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(terminal)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "terminalId": {
+              "type": "string",
+              "description": "The terminal ID to manage. Get this from listTerminals or from a previous runScript response."
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "close",
+                "interrupt",
+                "send_input"
+              ],
+              "description": "The action to perform: 'close' disposes the terminal, 'interrupt' sends Ctrl+C (SIGINT), 'send_input' types text (requires 'input' parameter)."
+            },
+            "input": {
+              "type": "string",
+              "description": "Text to send to the terminal. Only used with 'send_input' action."
             }
           },
           "required": [
-            "commandId"
+            "terminalId",
+            "action"
           ]
         }
       }

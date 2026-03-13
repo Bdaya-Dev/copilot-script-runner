@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { RunScriptTool } from './tools/runScript';
 import { GetVersionTool } from './tools/getVersion';
 import { GetScriptOutputTool } from './tools/getScriptOutput';
+import { ListTerminalsTool } from './tools/listTerminals';
+import { ManageTerminalTool } from './tools/manageTerminal';
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Script Runner extension is now active');
@@ -21,7 +23,14 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.lm.registerTool('script-runner_get_output', new GetScriptOutputTool())
   );
 
+  // Register terminal management tools
+  context.subscriptions.push(
+    vscode.lm.registerTool('script-runner_list_terminals', new ListTerminalsTool())
+  );
 
+  context.subscriptions.push(
+    vscode.lm.registerTool('script-runner_manage_terminal', new ManageTerminalTool())
+  );
 }
 
 export function deactivate() {
