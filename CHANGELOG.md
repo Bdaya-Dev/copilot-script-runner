@@ -1,3 +1,13 @@
+## [5.0.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v4.0.1...v5.0.0) (2026-03-13)
+
+### ⚠ BREAKING CHANGES
+
+* add terminal management tools and enhance script execution capabilities
+
+### Features
+
+* add terminal management tools and enhance script execution capabilities ([16cbb8e](https://github.com/bdaya-dev/copilot-script-runner/commit/16cbb8e79756b0928f89b8faf88bf131d854e9e8))
+
 ## [4.0.1](https://github.com/bdaya-dev/copilot-script-runner/compare/v4.0.0...v4.0.1) (2026-02-27)
 
 ## [4.0.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v3.0.0...v4.0.0) (2026-02-27)
