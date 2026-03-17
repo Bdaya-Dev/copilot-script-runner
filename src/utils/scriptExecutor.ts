@@ -53,6 +53,26 @@ export interface Command {
   completed: boolean;
   /** Resolves when the command stream ends */
   completionPromise: Promise<void>;
+  /**
+   * Resolves when it is safe to dispatch a new command on this terminal.
+   *
+   * - Normal completion: resolves together with completionPromise.
+   * - closeOnTimeout=true timed out: resolves immediately after Ctrl+C so the
+   *   terminal can be reused without waiting for the (now-aborted) reader.
+   * - closeOnTimeout=false timed out: does NOT resolve until the command ends
+   *   naturally — the terminal remains locked to prevent output interleaving.
+   */
+  reuseGate: Promise<void>;
+  /** @internal Resolves reuseGate — called by the background reader or on abort. */
+  _resolveReuseGate: () => void;
+  /** @internal When true the background reader exits at the next chunk boundary. */
+  _readerAborted: boolean;
+  /**
+   * @internal Set to true by whichever code path releases busyTerminals first.
+   * The finally block checks this before deleting so it never incorrectly removes
+   * a LATER command's busy entry on the same terminal.
+   */
+  _busyReleased: boolean;
   /** Path to the temp script file, cleaned up when command completes */
   scriptPath?: string;
   /** Whether to keep the script file after completion */
@@ -456,14 +476,14 @@ export async function executeInTerminal(
       // New terminal: wait for shell integration to activate
       await waitForShellIntegration(terminal, token);
     } else {
-      // Reused terminal: wait for the previous command's execution stream to
-      // fully close. VS Code's built-in tools wait for "idle" (no data for
-      // 1 s); we accomplish the same by awaiting the last command's
-      // completionPromise which resolves when execution.read() finishes
-      // (i.e., all data between OSC 633;B and 633;D has been delivered).
+      // Reused terminal: wait until the previous command's terminal slot is free.
+      // reuseGate resolves when the stream ends naturally OR when a timed-out
+      // command is explicitly interrupted (closeOnTimeout=true).  For timed-out
+      // commands still running in the background it stays pending, keeping the
+      // terminal locked to prevent output interleaving.
       const lastCmd = getLastCommandForTerminal(terminalId);
       if (lastCmd && !lastCmd.completed) {
-        await lastCmd.completionPromise;
+        await lastCmd.reuseGate;
       }
     }
   } catch (e) {
@@ -491,6 +511,9 @@ export async function executeInTerminal(
   const commandId = generateCommandId();
 
   // Track command with background output collection
+  let _resolveReuseGate!: () => void;
+  const reuseGate = new Promise<void>(resolve => { _resolveReuseGate = resolve; });
+
   const cmd: Command = {
     commandId,
     terminalId,
@@ -500,6 +523,10 @@ export async function executeInTerminal(
     output: '',
     completed: false,
     completionPromise: Promise.resolve(),
+    reuseGate,
+    _resolveReuseGate,
+    _readerAborted: false,
+    _busyReleased: false,
     scriptPath,
     keepScript,
     commandText: command
@@ -511,12 +538,24 @@ export async function executeInTerminal(
     try {
       const bgStream = execution.read();
       for await (const chunk of bgStream) {
+        if (cmd._readerAborted) { break; }
         cmd.output += chunk;
       }
     } catch {
       // Stream ended or errored
     } finally {
       cmd.completed = true;
+      // Unblock any terminal waiting on this command's reuse gate.
+      _resolveReuseGate();
+      // Release the busy lock only if we still own it.
+      // The closeOnTimeout=true foreground path releases it first (and sets
+      // _busyReleased=true); this guard prevents deleting a LATER command's
+      // busy entry that was added to the same terminal slot after that early
+      // release.
+      if (!cmd._busyReleased) {
+        cmd._busyReleased = true;
+        busyTerminals.delete(terminalId);
+      }
       // Clean up the temp script file now that the command has fully finished
       if (cmd.scriptPath && !cmd.keepScript) {
         cleanupScriptFile(cmd.scriptPath).catch(() => { });
@@ -555,14 +594,21 @@ export async function executeInTerminal(
     result = await cmd.completionPromise.then(() => 'complete' as const).catch(() => 'error' as const);
   }
 
-  // Mark terminal as idle
-  busyTerminals.delete(terminalId);
-
   if (result === 'timeout') {
     if (closeOnTimeout) {
-      // Send Ctrl+C (SIGINT) to interrupt the running command
+      // Send Ctrl+C (SIGINT) to interrupt the running command, then abort the
+      // background reader and immediately release the terminal for reuse.
       terminal.sendText('\x03', false);
+      cmd._readerAborted = true;
+      // Mark as released first so the finally block skips the delete entirely,
+      // preventing it from later removing a different command's busy entry.
+      cmd._busyReleased = true;
+      busyTerminals.delete(terminalId);
+      _resolveReuseGate();
     }
+    // When closeOnTimeout=false the command is still running in the terminal.
+    // Leave busyTerminals intact — the background reader's finally block will
+    // call busyTerminals.delete + _resolveReuseGate when the command ends.
     return {
       stdout: cmd.output + '\n\n[Output truncated - command timed out or is still running.' + (closeOnTimeout ? ' Command was interrupted (Ctrl+C).' : '') + ' Command ID: ' + commandId + ']',
       stderr: '',
@@ -573,6 +619,11 @@ export async function executeInTerminal(
     };
   }
 
+  // Normal/error completion — the finally block already released busyTerminals
+  // (it runs synchronously before completionPromise resolves) and resolved
+  // reuseGate.  Any code awaiting reuseGate is queued as a microtask and will
+  // call busyTerminals.add() for the next command before this point is reached,
+  // so a redundant delete here would incorrectly remove that new entry.
   return {
     stdout: cmd.output,
     stderr: '',
