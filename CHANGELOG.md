@@ -1,3 +1,9 @@
+## [5.0.1](https://github.com/bdaya-dev/copilot-script-runner/compare/v5.0.0...v5.0.1) (2026-03-17)
+
+### Bug Fixes
+
+* enhance command management in terminal execution with reuse gate ([5de1c16](https://github.com/bdaya-dev/copilot-script-runner/commit/5de1c16acddd67c06eb977f8184b24a9e6d072ad))
+
 ## [5.0.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v4.0.1...v5.0.0) (2026-03-13)
 
 ### ⚠ BREAKING CHANGES
