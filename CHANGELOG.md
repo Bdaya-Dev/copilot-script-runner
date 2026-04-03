@@ -1,3 +1,9 @@
+## [5.1.0](https://github.com/bdaya-dev/copilot-script-runner/compare/v5.0.1...v5.1.0) (2026-04-03)
+
+### Features
+
+* add language model tool sets for enhanced script management and terminal operations ([7b253eb](https://github.com/bdaya-dev/copilot-script-runner/commit/7b253eba013f30917f785ca3b2110b38256b9e16))
+
 ## [5.0.1](https://github.com/bdaya-dev/copilot-script-runner/compare/v5.0.0...v5.0.1) (2026-03-17)
 
 ### Bug Fixes
