@@ -39,9 +39,26 @@
     "automation",
     "devops"
   ],
+  "enabledApiProposals": [
+    "contribLanguageModelToolSets"
+  ],
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "languageModelToolSets": [
+      {
+        "name": "script-runner",
+        "description": "Tools for running scripts, managing terminals, and retrieving command output across multiple shells (PowerShell, Bash, WSL, Git Bash, Zsh, Fish).",
+        "icon": "$(terminal)",
+        "tools": [
+          "runScript",
+          "getScriptOutput",
+          "listTerminals",
+          "manageTerminal",
+          "scriptRunnerVersion"
+        ]
+      }
+    ],
     "languageModelTools": [
       {
         "name": "script-runner_run_script",
