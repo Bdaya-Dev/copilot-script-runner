@@ -195,12 +195,9 @@ export function generateCommandId(): string {
 /**
  * Strip ANSI escapes AND the command echo from terminal output.
  *
- * execution.read() yields all terminal data while an execution is "current"
- * (between shell integration markers OSC 633;B and 633;D). This includes the
- * echoed command line (between B and C) before the actual output (between C
- * and D). Stripping the echo prevents the invocation command from appearing
- * in the returned output, which otherwise looks like bleed-through from
- * previous invocations.
+ * onDidWriteTerminalData captures all raw terminal data including the echoed
+ * command line. Stripping the echo prevents the invocation command from
+ * appearing in the returned output.
  */
 export function cleanOutput(rawOutput: string, commandText?: string): string {
   let cleaned = stripAnsiEscapes(rawOutput);
@@ -531,37 +528,53 @@ export async function executeInTerminal(
     keepScript,
     commandText: command
   };
-  // Start background reader that accumulates output continuously.
-  // execution.read() returns a fresh AsyncIterable replaying from the start,
-  // so this doesn't conflict with the foreground reader below.
-  cmd.completionPromise = (async () => {
-    try {
-      const bgStream = execution.read();
-      for await (const chunk of bgStream) {
-        if (cmd._readerAborted) { break; }
-        cmd.output += chunk;
-      }
-    } catch {
-      // Stream ended or errored
-    } finally {
+  // Start background output capture via onDidWriteTerminalData.
+  // This replaces execution.read() which suffers from a VS Code bug where
+  // native commands (git, cmd, etc.) cause the AsyncIterable to terminate
+  // prematurely, losing all subsequent output. onDidWriteTerminalData fires
+  // independently of shell integration lifecycle and captures ALL terminal data.
+  // See: https://github.com/microsoft/vscode/issues/297109
+  let rawOutput = '';
+  cmd.completionPromise = new Promise<void>(resolveCompletion => {
+    let cleanedUp = false;
+    function cleanup() {
+      if (cleanedUp) { return; }
+      cleanedUp = true;
+      dataListener.dispose();
+      closeListener.dispose();
+      endListener.dispose();
+      cmd.output = rawOutput;
       cmd.completed = true;
-      // Unblock any terminal waiting on this command's reuse gate.
       _resolveReuseGate();
-      // Release the busy lock only if we still own it.
-      // The closeOnTimeout=true foreground path releases it first (and sets
-      // _busyReleased=true); this guard prevents deleting a LATER command's
-      // busy entry that was added to the same terminal slot after that early
-      // release.
       if (!cmd._busyReleased) {
         cmd._busyReleased = true;
         busyTerminals.delete(terminalId);
       }
-      // Clean up the temp script file now that the command has fully finished
       if (cmd.scriptPath && !cmd.keepScript) {
         cleanupScriptFile(cmd.scriptPath).catch(() => { });
       }
+      resolveCompletion();
     }
-  })();
+
+    const dataListener = vscode.window.onDidWriteTerminalData(e => {
+      if (e.terminal !== terminal || cmd._readerAborted) { return; }
+      rawOutput += e.data;
+    });
+
+    // Safety net: if the terminal is closed before the execution ends,
+    // clean up immediately to avoid leaked listeners and a stuck promise.
+    const closeListener = vscode.window.onDidCloseTerminal(t => {
+      if (t === terminal) { cleanup(); }
+    });
+
+    // Use onDidEndTerminalShellExecution as completion signal with a delay
+    // to let any remaining onDidWriteTerminalData events arrive.
+    const endListener = vscode.window.onDidEndTerminalShellExecution(e => {
+      if (e.execution !== execution) { return; }
+      endListener.dispose();
+      setTimeout(cleanup, 200);
+    });
+  });
   commands.set(commandId, cmd);
   executionToCommandId.set(execution, commandId);
 
@@ -638,15 +651,10 @@ export async function executeInTerminal(
  * Build the command to execute a script based on the shell type.
  * 
  * This handles the differences between shells:
- * - PowerShell: Uses *>&1 to merge streams and Out-Host for streaming output
+ * - PowerShell: Runs script via & operator with Out-Host for streaming display
  * - Bash/Zsh: Uses 2>&1 to merge stderr into stdout
  * - Fish: Uses 2>&1 redirection
  * - CMD: Uses 2>&1 redirection
- * 
- * Note: Out-Host is preferred over Out-String because:
- * - Out-Host streams output in real-time as commands execute
- * - Out-String buffers all output until complete, blocking progress display
- * - Out-Host allows Write-Progress and other progress indicators to work correctly
  * 
  * @param scriptPath - Path to the script file
  * @param shellType - The shell type to format the command for
@@ -655,8 +663,14 @@ export async function executeInTerminal(
 export function buildScriptCommand(scriptPath: string, shellType: ShellType, executingFromShell?: ShellType): string {
   switch (shellType) {
     case ShellType.PowerShell:
-      // *>&1 merges all PowerShell streams into stdout, Out-Host streams output in real-time
-      return `pwsh -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" *>&1 | Out-Host`;
+      // Run script via & (call operator) which executes the quoted path.
+      // & is required because the path is in quotes (for spaces in temp dirs);
+      // without it PowerShell just prints the string literal.
+      // exit $LASTEXITCODE propagates the script's exit code to the shell,
+      // which becomes the 633;D exit code for onDidEndTerminalShellExecution.
+      // No | Out-Host needed — output goes to terminal directly.
+      // No 2>&1 needed — in a PTY both stdout and stderr go to the same stream.
+      return `& '${scriptPath.replace(/'/g, "''")}'; exit $LASTEXITCODE`;
 
     case ShellType.Bash:
     case ShellType.Zsh:
@@ -749,18 +763,8 @@ export async function executeScript(
 }
 
 /**
+/**
  * Execute a PowerShell script file in VS Code terminal.
- * 
- * Uses *>&1 to merge all PowerShell streams (Error, Warning, Verbose, Debug, Info)
- * into the Success stream, then pipes through Out-Host for real-time streaming output.
- * This ensures all output including errors is displayed as it's generated.
- * 
- * Out-Host is preferred over Out-String because it:
- * - Streams output in real-time rather than buffering until complete
- * - Allows Write-Progress and progress bars to display correctly
- * - Doesn't block waiting for all input before producing output
- * 
- * @see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_redirection
  */
 export async function executePowerShellScript(
   scriptPath: string,

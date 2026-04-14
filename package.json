@@ -40,7 +40,8 @@
     "devops"
   ],
   "enabledApiProposals": [
-    "contribLanguageModelToolSets"
+    "contribLanguageModelToolSets",
+    "terminalDataWriteEvent"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
